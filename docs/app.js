@@ -153,6 +153,7 @@ function aisles() {
     ['Bebeluși', '👶', 'scutece lapte praf piure biberon'],
     ['Animale', '🐾', 'hrana caine hrana pisica hrana pisici mancare caine mancare pisica nisip pisici'],
     ['Farmacie', '💊', 'paracetamol nurofen ibuprofen algocalmin vitamine plasturi sirop de tuse'],
+    ['Casă și bucătărie', '🏠', 'becuri baterii pungi lumanari chibrituri brichete pahare farfurii tacamuri paie servetele de masa'],
     ['Altele', '🧺', ''],
   ];
 }
@@ -177,7 +178,17 @@ function shopCatalog() {
     'Farmacie': 'Paracetamol, Nurofen, Ibuprofen, Algocalmin, Vitamine, Vitamina C, Magneziu, Plasturi, Sirop de tuse, Spray nazal, Termometru',
   };
   const out = [];
-  for (const [aisle, list] of Object.entries(C)) list.split(',').map(s => s.trim()).filter(Boolean).forEach(name => out.push({ name, aisle }));
+  const seen = new Set();
+  const addAll = src => {
+    for (const [aisle, list] of Object.entries(src || {})) {
+      String(list).split(',').map(s => s.trim()).filter(Boolean).forEach(name => {
+        const k = normText(name);
+        if (!seen.has(k)) { seen.add(k); out.push({ name, aisle }); }
+      });
+    }
+  };
+  addAll(typeof window !== 'undefined' ? window.MINDME_CATALOG : null);   // the big catalog (catalog.js)
+  addAll(C);                                                               // built-in fallback
   return out;
 }
 var SHOP_CATALOG;
@@ -192,10 +203,11 @@ function aisleKeywords() {
     const phrases = ['balsam de rufe', 'saci menajer', 'saci de gunoi', 'pastile vase', 'tablete vase', 'hartie de bucatarie', 'prosoape de hartie',
       'balsam de par', 'gel de dus', 'pasta de dinti', 'hartie igienica', 'aparat de ras', 'spuma de ras', 'ata dentara', 'apa de gura', 'servetele umede',
       'lapte praf', 'hrana caine', 'hrana pisica', 'hrana pisici', 'mancare caine', 'mancare pisica', 'nisip pisici', 'sirop de tuse',
-      'unt de arahide', 'praf de copt', 'pasta de tomate', 'red bull', 'covrigi proaspeti'];
+      'unt de arahide', 'praf de copt', 'pasta de tomate', 'red bull', 'covrigi proaspeti', 'servetele de masa'];
     let rest = ' ' + words + ' ';
     for (const p of phrases) if (rest.includes(' ' + p + ' ')) { out.push([p, name]); rest = rest.replace(' ' + p + ' ', ' '); }
-    rest.split(' ').filter(Boolean).forEach(w => out.push([w, name]));
+    // single words of 1–2 letters ("de", "cu") are never keywords
+    rest.split(' ').filter(w => w.length >= 3).forEach(w => out.push([w, name]));
   }
   // every catalog product / brand is a keyword too ("snickers", "lapte zuzu", "aqua carpatica"...)
   for (const p of catalog()) {
@@ -205,11 +217,20 @@ function aisleKeywords() {
   return out.sort((a, b) => b[0].length - a[0].length);
 }
 var AISLE_KW;   // var: it is used while the data loads, before this line runs
+// In Romanian the product usually comes first ("pâine cu semințe", "lapte Zuzu", "bere Ursus"),
+// so the keyword found earliest in the text wins; among those starting at the same place, the longest.
 function guessAisle(title) {
   if (!AISLE_KW) AISLE_KW = aisleKeywords();
-  const n = ' ' + normText(title).replace(/[^a-z0-9 ]+/g, ' ') + ' ';
-  for (const [kw, name] of AISLE_KW) if (n.includes(' ' + kw)) return name;
-  return 'Altele';
+  let s = normText(title).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  s = s.replace(/^(\d+([.,]\d+)?\s*(x|buc|bucati|kg|g|gr|l|ml|pachete|pachet|cutii|sticle)?\s+)+/, '');   // "2 kg mere" → "mere"
+  const n = ' ' + s + ' ';
+  let best = null, bestPos = Infinity, bestLen = 0;
+  for (const [kw, name] of AISLE_KW) {
+    const pos = n.indexOf(' ' + kw);
+    if (pos < 0) continue;
+    if (pos < bestPos || (pos === bestPos && kw.length > bestLen)) { best = name; bestPos = pos; bestLen = kw.length; }
+  }
+  return best || 'Altele';
 }
 function aisleIcon(name) { const a = aisles().find(x => x[0] === name); return a ? a[1] : '🧺'; }
 
@@ -264,6 +285,14 @@ function save() {
 }
 const cats = () => [...db.categories].sort((a, b) => a.order - b.order);
 const catById = id => db.categories.find(c => c.id === id);
+// how many things are still open in a list (medicines: treatments in progress; mini-apps: 0)
+function activeCount(c) {
+  if (c.kind === 'app') return 0;
+  if (c.kind === 'meds') return db.entries.filter(e => e.cat === c.id && e.med && medStatus(e).state === 'active').length;
+  return db.entries.filter(e => e.cat === c.id && !e.done).length;
+}
+// lists ordered by themselves: most open things first, then alphabetically
+const catsByActivity = () => [...db.categories].sort((a, b) => activeCount(b) - activeCount(a) || a.name.localeCompare(b.name, 'ro'));
 const entryById = id => db.entries.find(e => e.id === id);
 const colorOf = c => PALETTE[((c?.color ?? 0) % PALETTE.length + PALETTE.length) % PALETTE.length];
 
@@ -706,7 +735,7 @@ function medsTodayHtml() {
 }
 
 function screenLists() {
-  const rows = cats().map((c, i, arr) => {
+  const rows = catsByActivity().map((c, i, arr) => {
     const items = db.entries.filter(e => e.cat === c.id);
     const active = items.filter(e => !e.done);
     const over = active.filter(e => isOverdue(e) || reminderMissed(e)).length;
@@ -726,7 +755,7 @@ function screenLists() {
       : `${active.length ? `<span class="badge" style="--c:${colorOf(c)}">${active.length}</span>` : ''}
          <button class="gear" data-act="cat-rules" data-id="${c.id}" aria-label="Reguli">${ICON.gear}</button>
          <span class="chev">${ICON.chev}</span>`;
-    return `<div class="swipe" ${ui.reorder ? '' : 'data-swipe="cat" data-reorder="cat"'} data-id="${c.id}"><button class="swipe-del" data-act="swipe-del" data-kind="cat" data-id="${c.id}">${ICON.trash}<span>Șterge</span></button>
+    return `<div class="swipe" ${ui.reorder ? '' : 'data-swipe="cat"'} data-id="${c.id}"><button class="swipe-del" data-act="swipe-del" data-kind="cat" data-id="${c.id}">${ICON.trash}<span>Șterge</span></button>
     <button class="swipe-set" data-act="swipe-set" data-id="${c.id}">${ICON.gear}<span>Setări</span></button>
     <div class="catrow swipe-content" data-act="${ui.reorder ? '' : 'open-cat'}" data-id="${c.id}">
       <div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
@@ -737,7 +766,7 @@ function screenLists() {
   return `
     ${mainHead('Liste', `<button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button>`)}
     <div class="group">${rows || '<div class="empty">Nicio listă.</div>'}</div>
-    <div class="footnote">Ține apăsat pe o listă și trage-o ca s-o muți. Glisează spre stânga pentru setări, spre dreapta pentru ștergere.</div>
+    <div class="footnote">Listele se ordonează singure: sus cele cu cele mai multe lucruri active, apoi alfabetic. Glisează spre stânga pentru setări, spre dreapta pentru ștergere.</div>
     <div class="sec-title">Backup</div>
     <div class="group">
       <button class="linkrow" data-act="export">${ICON.download} Salvează o copie (backup)</button>
@@ -926,8 +955,8 @@ function searchLayerHtml() {
         <span class="sl-ico">🕘</span><span class="sl-txt">${esc(t)}</span>
         <button class="sl-x" data-act="recent-del" data-i="${k}" aria-label="Șterge">✕</button></div>`).join('')}</div></div>` : ''}
     <div class="sl-in" style="--i:${i++}"><div class="sl-title">Liste</div>
-      <div class="group">${cats().map(c => {
-        const n = db.entries.filter(e => e.cat === c.id && !e.done).length;
+      <div class="group">${catsByActivity().map(c => {
+        const n = activeCount(c);
         return `<div class="catrow" data-act="search-cat" data-id="${c.id}"><div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
           <div style="flex:1"><div class="catname">${esc(c.name)}</div></div>${n ? `<span class="badge" style="--c:${colorOf(c)}">${n}</span>` : ''}<span class="chev">${ICON.chev}</span></div>`;
       }).join('')}</div></div>`;
@@ -1290,7 +1319,7 @@ function saveEntry(withAlarm) {
     cat: c.id,
     title: d.title.trim(),
     details: d.details.trim(),
-    group: c.usesGroups ? (d.group.trim() || (isShopCat(c) ? guessAisle(d.title) : '')) : (e.group || ''),
+    group: c.usesGroups ? (d.group.trim() || (isShopCat(c) ? shopGuess(d.title) : '')) : (e.group || ''),
     done: d.done,
     hasDeadline: c.usesDeadline && d.hasDeadline,
     deadline: d.deadline,
@@ -1311,6 +1340,8 @@ function saveEntry(withAlarm) {
     alarmFor: d.alarmFor || e.alarmFor || null,
   });
   if (c.usesSubs && c.subsAuto && e.subs.length && e.subs.every(x => x.done) && !e.done) { e.done = true; e.doneAt = Date.now(); }
+  // shopping: you moved it to another aisle than the one we'd guess → remember it for next time
+  if (isShopCat(c) && e.group && e.group !== guessAisle(e.title)) learnProduct(e.title, e.group);
   save();
   closeSheet();
   const needsAlarm = e.hasReminder && !e.done && !alarmAdded(e) && (e.repeat !== 'none' || parseLocal(e.reminder) > new Date());
@@ -1584,6 +1615,49 @@ function screenApp(c) {
 
 // ---------- shopping list ----------
 const isShopCat = c => c?.kind === 'shopping';
+// ---------- "Produsele mele": your own products and the aisle you want them in ----------
+// Learned automatically when you move a product to another aisle, or added by hand.
+const myProducts = () => (db.myProducts ||= {});
+function learnProduct(name, aisle) {
+  const n = String(name || '').trim();
+  if (!n || !aisle) return;
+  myProducts()[norm(n)] = { name: n.charAt(0).toUpperCase() + n.slice(1), aisle };
+  save();
+}
+// your own products win over the catalog: exact name first, then a name of yours contained in what you typed
+function shopGuess(title) {
+  const t = norm(title).trim();
+  const mine = myProducts();
+  if (mine[t]) return mine[t].aisle;
+  const padded = ' ' + t.replace(/[^a-z0-9 ]+/g, ' ') + ' ';
+  const hit = Object.entries(mine).sort((a, b) => b[0].length - a[0].length)
+    .find(([k]) => padded.includes(' ' + k.replace(/[^a-z0-9 ]+/g, ' ') + ' '));
+  return hit ? hit[1].aisle : guessAisle(title);
+}
+function myProductsSheetHtml() {
+  const s = ui.sheet;
+  const list = Object.values(myProducts()).sort((a, b) => a.name.localeCompare(b.name, 'ro'));
+  const opts = sel => aisles().map(a => `<option value="${esc(a[0])}" ${a[0] === sel ? 'selected' : ''}>${a[1]} ${esc(a[0])}</option>`).join('');
+  return `<div class="overlay"></div>
+  <div class="panel">
+    <div class="panel-head"><button data-act="sheet-close">Închide</button><div class="t">Produsele mele</div><span style="min-width:70px"></span></div>
+    <div class="panel-body">
+      <div class="fhead">Adaugă un produs</div>
+      <div class="form">
+        <div class="field"><input type="text" id="mp-name" placeholder="Nume (ex: Brânză de la piață)" value="${esc(s.name || '')}" autocomplete="off"></div>
+        <div class="field"><span class="lbl">Raion</span><select id="mp-aisle">${opts(s.aisle || 'Altele')}</select></div>
+      </div>
+      <button class="btn block mt" data-act="mp-add">＋ Salvează produsul</button>
+      <div class="ffoot">Când scrii produsul în lista de cumpărături, ajunge singur la raionul ales aici. Produsele se adaugă și singure aici când muți ceva la alt raion.</div>
+      <div class="fhead">${list.length ? `Produsele tale · ${list.length}` : 'Încă nu ai produse proprii'}</div>
+      ${list.length ? `<div class="form">${list.map(p => `<div class="field">
+          <span class="ico">${aisleIcon(p.aisle)}</span><span class="lbl">${esc(p.name)}</span>
+          <select data-mp="${esc(norm(p.name))}">${opts(p.aisle)}</select>
+          <button class="x" data-act="mp-del" data-v="${esc(norm(p.name))}" aria-label="Șterge" style="color:var(--muted);font-size:18px;width:30px">✕</button></div>`).join('')}</div>` : ''}
+    </div>
+  </div>`;
+}
+
 // suggestions while typing: what you bought before + the product catalog, best matches first
 function shopSuggestions(c, q) {
   const qn = norm(q).trim();
@@ -1603,7 +1677,8 @@ function shopSuggestions(c, q) {
     seen.add(n);
     out.push({ name, aisle: aisle || guessAisle(name), s: s + bonus - n.length * 0.1 });
   };
-  Object.values(c.history || {}).forEach(h => consider(h.name, guessAisle(h.name), 15 + Math.min(10, h.n)));
+  Object.values(myProducts()).forEach(p => consider(p.name, p.aisle, 25));
+  Object.values(c.history || {}).forEach(h => consider(h.name, shopGuess(h.name), 15 + Math.min(10, h.n)));
   catalog().forEach(p => consider(p.name, p.aisle, 0));
   out.sort((a, b) => b.s - a.s);
   return out.slice(0, 6);
@@ -1617,9 +1692,12 @@ function shopSuggestHtml(c, q) {
   const rows = list.map(x => `<button data-act="qa-pick" data-id="${c.id}" data-v="${esc(x.name)}" data-g="${esc(x.aisle)}">
       <span class="qs-ico">${aisleIcon(x.aisle)}</span><span class="qs-name">${esc(x.name)}</span><span class="qs-aisle">${esc(x.aisle)}</span></button>`);
   if (!exact && !raw.includes(',')) {
-    const g = guessAisle(raw);
+    const g = shopGuess(raw);
     rows.push(`<button data-act="qa-pick" data-id="${c.id}" data-v="${esc(typed)}" data-g="${esc(g)}">
       <span class="qs-ico">＋</span><span class="qs-name">Adaugă „${esc(typed)}”</span><span class="qs-aisle">${aisleIcon(g)} ${esc(g)}</span></button>`);
+    // a new product of yours: choose its aisle once, it's remembered
+    rows.push(`<button data-act="qa-pickaisle" data-id="${c.id}" data-v="${esc(typed)}">
+      <span class="qs-ico">🏷️</span><span class="qs-name">Produs nou „${esc(typed)}” · alege raionul</span><span class="qs-aisle">›</span></button>`);
   }
   return rows.join('');
 }
@@ -1632,7 +1710,7 @@ function shopAdd(c, text, forcedGroup) {
     if (db.entries.some(e => e.cat === c.id && !e.done && norm(e.title) === norm(title))) { dup++; continue; }
     const now = new Date();
     db.entries.push({
-      id: uid(), createdAt: Date.now(), cat: c.id, title, details: '', group: (names.length === 1 && forcedGroup) || guessAisle(title), done: false, doneAt: null,
+      id: uid(), createdAt: Date.now(), cat: c.id, title, details: '', group: (names.length === 1 && forcedGroup) || shopGuess(title), done: false, doneAt: null,
       hasDeadline: false, deadline: toLocal(now), deadlineTime: false, hasAmount: false, amount: 0, currency: c.currency || 'RON',
       paid: false, dir: 'out', vendor: '', tracking: '', priority: 0, hasReminder: false, reminder: toLocal(now), repeat: 'none', subs: [],
     });
@@ -1667,6 +1745,7 @@ function screenShopping(c) {
       <input id="quickadd" type="text" placeholder="Adaugă produs (ex: lapte Zuzu, Snickers)" autocomplete="off" autocorrect="off" enterkeyhint="done" data-cat="${c.id}">
     </div>
     <div id="qasugg" class="qa-sugg"></div>
+    <div class="qa-links"><button data-act="my-products">🏷️ Produsele mele${Object.keys(myProducts()).length ? ` · ${Object.keys(myProducts()).length}` : ''}</button></div>
     ${freq.length ? `<div class="sl-title" style="margin:14px 4px 8px">Cumpărate des · atinge ca să adaugi</div>
       <div class="quick qa-freq" style="--pink:${col};padding:0 0 4px">${freq.map(h => `<button data-act="qa-again" data-id="${c.id}" data-v="${esc(h.name)}">＋ ${esc(h.name)}</button>`).join('')}</div>` : ''}
     ${total ? `<div class="medtoday" style="--c:${col};margin-top:14px">
@@ -2337,7 +2416,7 @@ function renderSheet() {
   const scroll = body ? body.scrollTop : 0;
   const t = ui.sheet.type;
   el.innerHTML = t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml()
-    : t === 'search' ? searchSheetHtml() : t === 'med' ? medSheetHtml() : actionsHtml();
+    : t === 'search' ? searchSheetHtml() : t === 'med' ? medSheetHtml() : t === 'myprod' ? myProductsSheetHtml() : actionsHtml();
   const nb = el.querySelector('.panel-body');
   if (nb) nb.scrollTop = scroll;
   // no slide animation on re-render
@@ -2456,6 +2535,23 @@ document.addEventListener('click', ev => {
       }
       break;
     }
+    case 'qa-pickaisle': {
+      const c = catById(id); const name = el.dataset.v;
+      openActions(`În ce raion pui „${name}”? Îl țin minte pentru data viitoare.`, aisles().map(a => ({
+        label: `${a[1]}  ${a[0]}`,
+        run: () => { learnProduct(name, a[0]); if (c && shopAdd(c, name, a[0])) { render(); toast(`${name} → ${a[0]}`); } },
+      })));
+      break;
+    }
+    case 'my-products': ui.sheet = { type: 'myprod', name: '', aisle: 'Altele' }; renderSheet(); break;
+    case 'mp-add': {
+      const n = document.getElementById('mp-name')?.value.trim();
+      const a = document.getElementById('mp-aisle')?.value;
+      if (!n) { toast('Scrie numele produsului'); break; }
+      learnProduct(n, a); s.name = ''; s.aisle = a; renderSheet(); toast(`${n} → ${a}`);
+      break;
+    }
+    case 'mp-del': delete myProducts()[el.dataset.v]; save(); renderSheet(); break;
     case 'qa-again': { const c = catById(id); if (c && shopAdd(c, el.dataset.v)) { render(); toast(`${el.dataset.v} adăugat`); } break; }
     case 'cart-clear': {
       const c = catById(id);
@@ -2522,6 +2618,7 @@ document.addEventListener('click', ev => {
         .map(([k, v]) => ({ label: 'Grupare: ' + v.toLowerCase(), selected: c.groupMode === k, run: () => { c.groupMode = k; save(); render(); } }));
       openActions(c.name, [
         ...gm,
+        ...(isShopCat(c) ? [{ label: '🏷️ Produsele mele', run: () => { ui.sheet = { type: 'myprod', name: '', aisle: 'Altele' }; renderSheet(); } }] : []),
         { label: '⚙️ Reguli listă', run: () => openCategory(c.id) },
         { label: 'Șterge bifatele', danger: true, run: () => {
           const n = db.entries.filter(e => e.cat === c.id && e.done).length;
@@ -2628,6 +2725,12 @@ document.addEventListener('change', ev => {
     Object.assign(d, look);
     renderSheet();
     toast('Reguli copiate de la ' + TEMPLATES[t.value].label);
+    return;
+  }
+  // "Produsele mele": change the aisle of one of your products
+  if (t.dataset.mp !== undefined && ui.sheet?.type === 'myprod') {
+    const p = myProducts()[t.dataset.mp];
+    if (p) { p.aisle = t.value; save(); renderSheet(); }
     return;
   }
   // medicine editor: a time-of-day input (no re-render while the picker is open)
