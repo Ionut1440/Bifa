@@ -67,7 +67,7 @@ function parseAmount(t) {
 const PALETTE = ['#5B6BFA', '#FF8C40', '#2EB87A', '#F2B31A', '#ED548C', '#9961F2', '#1AB3CC', '#EB4240', '#8C6B4D', '#738094'];
 const EMOJIS = ['✅', '📦', '💳', '📝', '🔔', '🛒', '🛍️', '🏠', '💼', '❤️', '⭐', '🎁', '🚗', '✈️', '🍽️', '💊', '📚', '🎓', '🏋️', '🐾', '🌿', '🔧', '📄', '📅', '💰', '🏦', '👥', '📞', '💡', '🏷️', '📁', '🎵', '🎮', '👕', '🎂', '🧾'];
 const CURRENCIES = ['RON', 'EUR', 'USD', 'GBP'];
-const REPEATS = { none: 'Niciodată', daily: 'Zilnic', weekly: 'Săptămânal', monthly: 'Lunar', yearly: 'Anual' };
+const REPEATS = { none: 'Niciodată', daily: 'Zilnic', custom: 'La fiecare câteva zile', dates: 'Zile alese din calendar', weekly: 'Săptămânal', monthly: 'Lunar', yearly: 'Anual' };
 const PRIORITIES = ['Normal', 'Important', 'Urgent'];
 const REM_MODES = { off: 'Fără remindere', optional: 'Opțional, la fiecare element', always: 'Fiecare element e un reminder' };
 const GROUP_MODES = { date: 'După dată', group: 'După grup', none: 'Ordinea mea' };
@@ -77,6 +77,7 @@ const TEMPLATES = {
   payment: { label: 'Plăți', icon: '💳', color: 2 },
   note: { label: 'Notițe', icon: '📝', color: 3 },
   reminder: { label: 'Remindere', icon: '🔔', color: 4 },
+  meds: { label: 'Medicamente', icon: '💊', color: 6 },
   blank: { label: 'Listă simplă', icon: '📁', color: 5 },
 };
 
@@ -90,7 +91,7 @@ function baseRules() {
     usesTracking: false, trackingLabel: 'Cod / AWB',
     usesPriority: false, usesGroups: false, doneLabel: 'Bifat',
     reminderMode: 'optional', autoRem: false, autoRemDays: 1, autoRemTime: '09:00',
-    groupMode: 'date', summary: true, autoDelete: 0,
+    groupMode: 'date', summary: true, autoDelete: 0, kind: 'list',
   };
 }
 function templateRules(t) {
@@ -102,6 +103,7 @@ function templateRules(t) {
   if (t === 'note') set({ usesGroups: true, groupMode: 'group', placeholder: 'Titlu notiță' });
   if (t === 'reminder') set({ usesDeadline: false, reminderMode: 'always', doneLabel: 'Gata', placeholder: 'Ce să-ți amintesc?' });
   if (t === 'blank') set({ usesDeadline: false, groupMode: 'none' });
+  if (t === 'meds') set({ kind: 'meds', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false, placeholder: 'Numele medicamentului', doneLabel: 'Oprit' });
   return r;
 }
 const RULE_KEYS = Object.keys(baseRules());
@@ -114,13 +116,25 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw);
-      if (d && Array.isArray(d.categories) && Array.isArray(d.entries)) return d;
+      if (d && Array.isArray(d.categories) && Array.isArray(d.entries)) return addMedsListOnce(d);
     }
   } catch (e) { /* ignore */ }
-  const d = { v: 1, categories: [], entries: [] };
-  ['task', 'order', 'payment', 'note', 'reminder'].forEach((t, i) => {
+  const d = { v: 1, categories: [], entries: [], medsAdded: true };
+  ['task', 'order', 'payment', 'note', 'reminder', 'meds'].forEach((t, i) => {
     d.categories.push({ id: uid(), name: TEMPLATES[t].label, icon: TEMPLATES[t].icon, color: TEMPLATES[t].color, order: i, ...templateRules(t) });
   });
+  return d;
+}
+// existing users get the new "Medicamente" list once (if they delete it, it doesn't come back)
+function addMedsListOnce(d) {
+  if (!d.medsAdded) {
+    if (!d.categories.some(c => c.kind === 'meds')) {
+      const order = Math.max(-1, ...d.categories.map(c => c.order || 0)) + 1;
+      d.categories.push({ id: uid(), name: TEMPLATES.meds.label, icon: TEMPLATES.meds.icon, color: TEMPLATES.meds.color, order, ...templateRules('meds') });
+    }
+    d.medsAdded = true;
+    try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* ignore */ }
+  }
   return d;
 }
 function save() {
@@ -133,20 +147,66 @@ const entryById = id => db.entries.find(e => e.id === id);
 const colorOf = c => PALETTE[((c?.color ?? 0) % PALETTE.length + PALETTE.length) % PALETTE.length];
 
 // ---------- entry logic ----------
+// repeating reminders: daily / every N days ("custom") / weekly / monthly / yearly,
+// optionally ending after N times (repEnd 'count') or on a date (repEnd 'until')
+const isRepeating = e => !!e.repeat && e.repeat !== 'none';
+function remStep(e, d, r) {
+  switch (e.repeat) {
+    case 'daily': return addDays(d, 1);
+    case 'custom': return addDays(d, Math.max(1, +e.repInterval || 1));
+    case 'weekly': return addDays(d, 7);
+    case 'monthly': return new Date(d.getFullYear(), d.getMonth() + 1, r.getDate(), r.getHours(), r.getMinutes());
+    case 'yearly': return new Date(d.getFullYear() + 1, r.getMonth(), r.getDate(), r.getHours(), r.getMinutes());
+    default: return null;
+  }
+}
+// is occurrence number `idx` (0 = the first one), falling on date d, past the end?
+function remPastEnd(e, d, idx) {
+  if (e.repEnd === 'count') return idx >= Math.max(1, +e.repCount || 1);
+  if (e.repEnd === 'until' && e.repUntil) return startOfDay(d) > parseLocal(e.repUntil + 'T00:00');
+  return false;
+}
+// the last occurrence, when the repetition has an end (null = never ends)
+function remLast(e) {
+  if (e.repeat === 'dates') { const l = remDates(e); return l[l.length - 1] || null; }
+  const r = parseLocal(e.reminder);
+  if (!r || !isRepeating(e) || !e.repEnd || e.repEnd === 'never') return null;
+  let d = new Date(r);
+  for (let i = 1; i < 5000; i++) {
+    const n = remStep(e, d, r);
+    if (!n || remPastEnd(e, n, i)) return d;
+    d = n;
+  }
+  return d;
+}
+// "dates" mode: the reminder rings at the same time on each day picked in the calendar
+function remDates(e) {
+  const t = (e.reminder || '').split('T')[1] || '09:00';
+  return [...new Set(e.repDates || [])].sort().map(k => parseLocal(k + 'T' + t)).filter(Boolean);
+}
 function nextReminder(e) {
+  if (e.repeat === 'dates') return remDates(e).find(d => d > new Date()) || null;
   const r = parseLocal(e.reminder);
   if (!r) return null;
   const now = new Date();
-  if (e.repeat === 'none' || !e.repeat || r > now) return r;
+  if (!isRepeating(e) || r > now) return r;
   let d = new Date(r);
-  for (let i = 0; i < 5000 && d <= now; i++) {
-    if (e.repeat === 'daily') d = addDays(d, 1);
-    else if (e.repeat === 'weekly') d = addDays(d, 7);
-    else if (e.repeat === 'monthly') d = new Date(d.getFullYear(), d.getMonth() + 1, r.getDate(), r.getHours(), r.getMinutes());
-    else if (e.repeat === 'yearly') d = new Date(d.getFullYear() + 1, r.getMonth(), r.getDate(), r.getHours(), r.getMinutes());
-    else break;
+  for (let i = 1; i < 5000 && d <= now; i++) {
+    const n = remStep(e, d, r);
+    if (!n) break;
+    if (remPastEnd(e, n, i)) return null;   // the repetition is over
+    d = n;
   }
   return d;
+}
+function repeatText(e) {
+  if (!isRepeating(e)) return '';
+  if (e.repeat === 'dates') { const n = (e.repDates || []).length; return `${n} ${n === 1 ? 'zi aleasă' : 'zile alese'}`; }
+  let t = e.repeat === 'custom' ? `la fiecare ${Math.max(1, +e.repInterval || 1)} zile` : REPEATS[e.repeat].toLowerCase();
+  if (e.repeat === 'custom' && +e.repInterval === 1) t = 'zilnic';
+  if (e.repEnd === 'count') t += ` · de ${Math.max(1, +e.repCount || 1)} ori`;
+  else if (e.repEnd === 'until' && e.repUntil) t += ` · până ${fmtDay(parseLocal(e.repUntil + 'T00:00')).toLowerCase()}`;
+  return t;
 }
 const deadlineOf = e => (e.hasDeadline ? parseLocal(e.deadline) : null);
 function isOverdue(e) {
@@ -163,8 +223,10 @@ function reminderMissed(e) {
 }
 const sortDate = e => deadlineOf(e) || (e.hasReminder ? nextReminder(e) : null);
 const deadlineText = e => { const d = deadlineOf(e); return d ? (e.deadlineTime ? fmtDayTime(d) : fmtDay(d)) : ''; };
-const alarmKey = e => `${e.reminder}|${e.repeat}|${e.title}`;
-const alarmAdded = e => e.hasReminder && e.alarmFor === alarmKey(e);
+const alarmKey = e => (e.med
+  ? JSON.stringify([e.title, e.med.dose, e.med.times, e.med.start, e.med.durType, e.med.days, e.med.until, e.med.weekdays])
+  : `${e.reminder}|${e.repeat}|${e.repInterval || ''}|${e.repEnd || ''}|${e.repCount || ''}|${e.repUntil || ''}|${(e.repDates || []).join(',')}|${e.title}`);
+const alarmAdded = e => (e.med ? !!e.med.alarm : e.hasReminder) && e.alarmFor === alarmKey(e);
 
 // Items checked a moment ago stay visible (struck through) for a few seconds, with an "Anulează" bar.
 const recentlyDone = new Map();
@@ -319,25 +381,32 @@ function buildIcs(e) {
   const pending = (e.subs || []).filter(s => !s.done).map(s => '• ' + s.title);
   if (pending.length) lines.push(pending.join('\n'));
   lines.push('— din MindMe (' + (c?.name || '') + ')');
-  const rrule = { daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY' }[e.repeat];
-  const out = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Bifa//RO', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `UID:${e.id}@bifa`,
-    `DTSTAMP:${stamp}`,
-    `DTSTART:${icsDate(start)}`,
-    `DTEND:${icsDate(end)}`,
-    `SUMMARY:${icsEscape('🔔 ' + e.title)}`,
-    `DESCRIPTION:${icsEscape(lines.join('\n'))}`,
-  ];
-  if (rrule) out.push(`RRULE:FREQ=${rrule}`);
-  out.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(e.title)}`, 'TRIGGER:-PT0M', 'END:VALARM');
-  out.push('END:VEVENT', 'END:VCALENDAR');
+  let rrule = { daily: 'DAILY', custom: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY' }[e.repeat];
+  if (rrule) {
+    if (e.repeat === 'custom' && +e.repInterval > 1) rrule += `;INTERVAL=${+e.repInterval}`;
+    if (e.repEnd === 'count') rrule += `;COUNT=${Math.max(1, +e.repCount || 1)}`;
+    else if (e.repEnd === 'until' && e.repUntil) rrule += `;UNTIL=${e.repUntil.replace(/-/g, '')}T235900`;
+  }
+  // "dates" mode → one event per picked day (all added with a single "Adaugă")
+  const starts = e.repeat === 'dates' ? remDates(e).filter(d => d > now) : [start];
+  const out = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//MindMe//RO', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  for (const s of starts) {
+    out.push('BEGIN:VEVENT',
+      `UID:${e.id}${e.repeat === 'dates' ? '-' + icsDate(s) : ''}@bifa`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${icsDate(s)}`,
+      `DTEND:${icsDate(new Date(s.getTime() + 15 * 60000))}`,
+      `SUMMARY:${icsEscape('🔔 ' + e.title)}`,
+      `DESCRIPTION:${icsEscape(lines.join('\n'))}`);
+    if (rrule) out.push(`RRULE:FREQ=${rrule}`);
+    out.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(e.title)}`, 'TRIGGER:-PT0M', 'END:VALARM', 'END:VEVENT');
+  }
+  out.push('END:VCALENDAR');
   return out.join('\r\n');
 }
 async function addAlarm(e) {
-  if (!e.hasReminder || !e.reminder) return;
-  const ics = buildIcs(e);
+  if (!e.med && (!e.hasReminder || !e.reminder)) return;
+  const ics = e.med ? buildMedIcs(e) : buildIcs(e);
   e.alarmFor = alarmKey(e);
   save();
   const name = 'mindme-' + e.title.replace(/[^\p{L}\p{N}]+/gu, '-').slice(0, 30) + '.ics';
@@ -369,6 +438,7 @@ const ui = {
   reorder: false,
   sheet: null,      // { type: 'entry'|'category'|'actions', ... }
   stats: { view: 'general', range: '12', metric: 'spent', act: 'done', sel: '' },
+  searching: false, searchQ: '', searchFilter: null,
 };
 
 const ICON = {
@@ -394,12 +464,13 @@ const ICON = {
 // ---------- rendering: shared pieces ----------
 const APP_NAME = 'MindMe';
 // top-left of the main screens: search button (the user didn't want the logo + name there)
-const brand = () => `<button class="iconbtn" data-act="search-open" aria-label="Caută">${ICON.search}</button>`;
+const brand = () => `<button class="searchpill" data-act="search-open">${ICON.search}<span>Caută</span></button>`;
 const chip = (text, color, act) => act
   ? `<button class="chip" style="--cc:${color}" ${act}>${esc(text)}</button>`
   : `<span class="chip" style="--cc:${color}">${esc(text)}</span>`;
 
 function rowHtml(e, opts = {}) {
+  if (e.med) return medRowHtml(e);
   const c = catById(e.cat);
   const col = colorOf(c);
   const chips = [];
@@ -422,9 +493,11 @@ function rowHtml(e, opts = {}) {
   if (e.hasReminder && !e.done) {
     const r = nextReminder(e);
     if (r) {
-      let t = (e.repeat && e.repeat !== 'none' ? '🔁 ' : '🔔 ') + fmtDayTime(r);
-      if (e.repeat && e.repeat !== 'none') t += ' · ' + REPEATS[e.repeat].toLowerCase();
+      let t = (isRepeating(e) ? '🔁 ' : '🔔 ') + fmtDayTime(r);
+      if (isRepeating(e)) t += ' · ' + repeatText(e);
       chips.push(chip(t, reminderMissed(e) ? 'var(--red)' : 'var(--pink)'));
+    } else if (isRepeating(e)) {
+      chips.push(chip('🔁 Remindere încheiate', 'var(--muted)'));
     }
     if (!reminderMissed(e)) {
       chips.push(alarmAdded(e)
@@ -466,7 +539,9 @@ function sectionsHtml(sections, opts) {
     ${s.title ? `<div class="sec-title ${s.id === 'overdue' ? 'red' : ''}">${esc(s.title)}</div>` : '<div style="height:14px"></div>'}
     <div class="group">${s.items.map(e => rowHtml(e, opts)).join('')}</div>`).join('');
 }
-const tile = (label, value, color) => `<div class="tile" style="--tc:${color}"><div class="tl">${esc(label)}</div><div class="tv">${esc(value)}</div></div>`;
+const tile = (label, value, color, f) => f
+  ? `<button class="tile" style="--tc:${color}" data-act="tile-filter" data-f="${f}"><div class="tl">${esc(label)}</div><div class="tv">${esc(value)}</div></button>`
+  : `<div class="tile" style="--tc:${color}"><div class="tl">${esc(label)}</div><div class="tv">${esc(value)}</div></div>`;
 
 // ---------- screens ----------
 function screenToday() {
@@ -487,18 +562,26 @@ function screenToday() {
   const install = !isStandalone() ? `<div class="banner"><b>📲 Pune MindMe pe ecranul telefonului</b>În Safari apasă <b style="display:inline">Partajează</b> (pătratul cu săgeată) → <b style="display:inline">Adaugă pe ecranul principal</b>.</div>` : '';
   const sec = (title, items, cls) => items.length ? `<div class="sec-title ${cls}">${title}</div><div class="group">${items.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : '';
   return `
-    <div class="topbar"><div class="left">${brand()}</div><div class="right"><button class="iconbtn fill" data-act="new-pick">${ICON.plus}</button></div></div>
-    <h1>${esc(cap(fLong.format(new Date())))}</h1>
+    ${mainHead(cap(fLong.format(new Date())), `<button class="iconbtn fill" data-act="new-pick">${ICON.plus}</button>`)}
     ${install}
     <div class="tiles three">
       ${tile('Întârziate', ov.length, ov.length ? 'var(--red)' : 'var(--muted)')}
       ${tile('Azi', td.length, 'var(--orange)')}
       ${tile('7 zile', wk.length, 'var(--blue)')}
     </div>
-    ${!ov.length && !td.length && !wk.length ? `<div class="empty"><div class="big">☀️</div><b>Ziua e liberă</b>Nimic întârziat sau programat în zilele următoare.</div>` : ''}
+    ${!ov.length && !td.length && !wk.length && !dosesOn(new Date()).length ? `<div class="empty"><div class="big">☀️</div><b>Ziua e liberă</b>Nimic întârziat sau programat în zilele următoare.</div>` : ''}
+    ${medsTodayHtml()}
     ${sec('Întârziate', ov, 'red')}
     ${sec('Azi', td, 'orange')}
     ${sec('Următoarele 7 zile', wk, '')}`;
+}
+
+function medsTodayHtml() {
+  const doses = dosesOn(new Date());
+  if (!doses.length) return '';
+  const taken = doses.filter(x => x.taken).length;
+  return `<div class="sec-title" style="color:var(--text);font-size:15px;text-transform:none;margin-top:24px">💊 Medicamente azi · ${taken} din ${doses.length} luate</div>
+    ${doseRowsHtml(doses, new Date())}`;
 }
 
 function screenLists() {
@@ -510,6 +593,12 @@ function screenLists() {
     let sub = active.length ? `${active.length} ${active.length === 1 ? 'activ' : 'active'}` : 'Totul e bifat ✓';
     if (today) sub += ` · ${today} azi`;
     if (over) sub += ` · ${over} întârziat${over === 1 ? '' : 'e'}`;
+    if (isMedCat(c)) {
+      const running = items.filter(e => e.med && medStatus(e).state === 'active').length;
+      const doses = dosesOn(new Date()).filter(x => x.e.cat === c.id);
+      sub = running ? `${running} ${running === 1 ? 'tratament' : 'tratamente'} în curs` : 'Niciun tratament în curs';
+      if (doses.length) sub += ` · azi ${doses.filter(x => x.taken).length}/${doses.length} luate`;
+    }
     const right = ui.reorder
       ? `<div class="order-btns"><button data-act="cat-up" data-id="${c.id}" ${i === 0 ? 'disabled style="opacity:.3"' : ''}>${ICON.up}</button><button data-act="cat-down" data-id="${c.id}" ${i === arr.length - 1 ? 'disabled style="opacity:.3"' : ''}>${ICON.down}</button></div>`
       : `${active.length ? `<span class="badge" style="--c:${colorOf(c)}">${active.length}</span>` : ''}
@@ -524,11 +613,8 @@ function screenLists() {
     </div></div>`;
   }).join('');
   return `
-    <div class="topbar"><div class="left">${brand()}</div>
-      <div class="right"><button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button></div></div>
-    <h1>Liste</h1>
+    ${mainHead('Liste', `<button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button>`)}
     <div class="group">${rows || '<div class="empty">Nicio listă.</div>'}</div>
-    <div class="group mt"><button class="linkrow" data-act="cat-new">${ICON.plus} Listă nouă</button></div>
     <div class="footnote">Ține apăsat pe o listă și trage-o ca s-o muți. Glisează spre stânga pentru setări, spre dreapta pentru ștergere.</div>
     <div class="sec-title">Backup</div>
     <div class="group">
@@ -580,6 +666,7 @@ function categoryListHtml(c) {
   return sectionsHtml(sections, { showGroup: c.groupMode !== 'group', reorder: true });
 }
 function screenCategory(c) {
+  if (isMedCat(c)) return screenMeds(c);
   const all = db.entries.filter(e => e.cat === c.id);
   const active = all.filter(e => !e.done);
   const col = colorOf(c);
@@ -610,14 +697,13 @@ function screenCategory(c) {
 function screenReminders() {
   const list = db.entries.filter(e => e.hasReminder && catById(e.cat));
   const missed = list.filter(reminderMissed).sort((a, b) => parseLocal(b.reminder) - parseLocal(a.reminder));
-  const upcoming = list.filter(e => (!e.done || isRecent(e)) && !reminderMissed(e));
+  const upcoming = list.filter(e => (!e.done || isRecent(e)) && !reminderMissed(e) && nextReminder(e));
   const days = {};
   for (const e of upcoming) { const d = startOfDay(nextReminder(e)); (days[+d] ||= []).push(e); }
   const keys = Object.keys(days).map(Number).sort((a, b) => a - b);
   const notAdded = upcoming.filter(e => !alarmAdded(e)).length;
   return `
-    <div class="topbar"><div class="left">${brand()}</div><div class="right"><button class="iconbtn fill" data-act="new-pick" data-rem="1">${ICON.plus}</button></div></div>
-    <h1>Remindere</h1>
+    ${mainHead('Remindere', `<button class="iconbtn fill" data-act="new-pick" data-rem="1">${ICON.plus}</button>`)}
     ${notAdded ? `<div class="banner"><b>🔔 ${notAdded} ${notAdded === 1 ? 'reminder fără alarmă' : 'remindere fără alarmă'}</b>Apasă „+ Pune alarmă” ca să sune la ora aleasă, chiar dacă aplicația e închisă (se pune în Calendarul iPhone-ului).</div>` : ''}
     ${!missed.length && !keys.length ? `<div class="empty"><div class="big">🔔</div><b>Niciun reminder</b>Adaugă unul cu + sau pune „Amintește-mi” la orice element.</div>` : ''}
     ${missed.length ? `<div class="sec-title red">Trecute, nebifate</div><div class="group">${missed.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : ''}
@@ -634,17 +720,120 @@ function render() {
   else if (ui.tab === 'reminders') html = screenReminders();
   else if (ui.tab === 'stats') html = screenStats();
   else html = screenToday();
+  const isMain = !(ui.tab === 'lists' && ui.catId);
+  if (isMain) html += `</div><div class="searchlayer" id="slayer">${ui.searching ? searchLayerHtml() : ''}</div>`;
+  else ui.searching = false;
   app.innerHTML = html;
+  app.classList.toggle('searching', !!(isMain && ui.searching));
   openSwipeEl = null;
-  window.scrollTo(0, y);
+  window.scrollTo(0, ui.searching ? 0 : y);
   renderTabbar();
+  initSegs(app);
 }
+
+// ---------- main header: title + "+" on one row, full-width search bar below (like WhatsApp) ----------
+function mainHead(title, right) {
+  return `<div class="mainhead">
+    <div class="hrow"><h1>${esc(title)}</h1><div class="right">${right}</div></div>
+    <div class="sbar">
+      <label class="sfield">${ICON.search}<input id="gsearch" type="search" placeholder="Caută" autocomplete="off" autocorrect="off" enterkeyhint="search" value="${esc(ui.searchQ || '')}"></label>
+      <button class="scancel" data-act="search-cancel">Anulează</button>
+    </div>
+  </div><div class="screen-body">`;
+}
+
+// ---------- in-place search: suggestions, recent searches, lists ----------
+const SEARCH_FILTERS = [
+  { k: 'today', label: '📅 Azi', items: () => db.entries.filter(e => !e.med && !e.done && (isDueToday(e) || (e.hasReminder && nextReminder(e) && sameDay(nextReminder(e), new Date())))) },
+  { k: 'overdue', label: '⚠️ Întârziate', items: () => db.entries.filter(e => !e.med && !e.done && (isOverdue(e) || reminderMissed(e))) },
+  { k: 'meds', label: '💊 Medicamente azi', items: () => [...new Set(dosesOn(new Date()).map(x => x.e))] },
+  { k: 'unpaid', label: '💸 De plătit', items: () => moneyItems().filter(x => x.flow === 'toPay').map(x => x.e) },
+  { k: 'receive', label: '💰 De primit', items: () => moneyItems().filter(x => x.flow === 'toReceive').map(x => x.e) },
+  { k: 'partial', label: '📦 Parțial primite', items: () => db.entries.filter(e => !e.done && (e.subs || []).length && e.subs.some(s => s.done) && !e.subs.every(s => s.done)) },
+  { k: 'reminders', label: '🔔 Cu reminder', items: () => db.entries.filter(e => !e.med && !e.done && e.hasReminder) },
+  { k: 'recent', label: '✓ Bifate recent', items: () => db.entries.filter(e => e.done && e.doneAt && Date.now() - e.doneAt < 7 * 86400000) },
+];
+const recents = () => (db.settings ||= {}).recent ||= [];
+function addRecent(q) {
+  q = (q || '').trim();
+  if (q.length < 2) return;
+  const r = recents();
+  const i = r.findIndex(x => norm(x) === norm(q));
+  if (i >= 0) r.splice(i, 1);
+  r.unshift(q);
+  r.length = Math.min(r.length, 8);
+  save();
+}
+function resultsByList(items) {
+  let html = '';
+  let i = 0;
+  for (const c of cats()) {
+    const list = items.filter(e => e.cat === c.id);
+    if (!list.length) continue;
+    html += `<div class="sl-in" style="--i:${i++}"><div class="sec-title">${c.icon} ${esc(c.name)} · ${list.length}</div>
+      <div class="group">${sortEntries(list).map(e => rowHtml(e, {})).join('')}</div></div>`;
+  }
+  return html;
+}
+function searchLayerHtml() {
+  const q = (ui.searchQ || '').trim();
+  if (ui.searchFilter) {
+    const f = SEARCH_FILTERS.find(x => x.k === ui.searchFilter) || STAT_FILTERS[ui.searchFilter];
+    const items = f ? f.items() : [];
+    return `<div class="sl-in"><button class="sl-active" data-act="filter-clear">${esc(f?.label || '')} <span>✕</span></button></div>
+      ${items.length ? resultsByList(items) : `<div class="empty sl-in"><div class="big">✨</div><b>Nimic aici</b>Nu ai elemente pentru „${esc(f?.label || '')}”.</div>`}`;
+  }
+  if (q) return searchResultsHtml(q);
+  const chips = SEARCH_FILTERS.map(f => ({ f, n: f.items().length })).filter(x => x.n);
+  const r = recents();
+  let i = 0;
+  return `
+    ${chips.length ? `<div class="sl-in" style="--i:${i++}"><div class="sl-title">Sugestii</div>
+      <div class="sl-chips">${chips.map(({ f, n }) => `<button data-act="sugg" data-v="${f.k}">${esc(f.label)} <b>${n}</b></button>`).join('')}</div></div>` : ''}
+    ${r.length ? `<div class="sl-in" style="--i:${i++}"><div class="sl-head"><span>Căutări recente</span><button data-act="recent-clear">Șterge tot</button></div>
+      <div class="group">${r.map((t, k) => `<div class="sl-recent" data-act="recent" data-v="${esc(t)}">
+        <span class="sl-ico">🕘</span><span class="sl-txt">${esc(t)}</span>
+        <button class="sl-x" data-act="recent-del" data-i="${k}" aria-label="Șterge">✕</button></div>`).join('')}</div></div>` : ''}
+    <div class="sl-in" style="--i:${i++}"><div class="sl-title">Liste</div>
+      <div class="group">${cats().map(c => {
+        const n = db.entries.filter(e => e.cat === c.id && !e.done).length;
+        return `<div class="catrow" data-act="search-cat" data-id="${c.id}"><div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
+          <div style="flex:1"><div class="catname">${esc(c.name)}</div></div>${n ? `<span class="badge" style="--c:${colorOf(c)}">${n}</span>` : ''}<span class="chev">${ICON.chev}</span></div>`;
+      }).join('')}</div></div>`;
+}
+function updateSearchLayer() {
+  const l = document.getElementById('slayer');
+  if (l && ui.searching) l.innerHTML = searchLayerHtml();
+}
+function enterSearch() {
+  if (ui.searching) return;
+  ui.searching = true;
+  window.scrollTo(0, 0);
+  document.getElementById('app').classList.add('searching');
+  updateSearchLayer();
+  document.getElementById('tabbar')?.classList.add('compact');
+}
+function exitSearch() {
+  ui.searching = false;
+  ui.searchQ = '';
+  ui.searchFilter = null;
+  const app = document.getElementById('app');
+  const inp = document.getElementById('gsearch');
+  if (inp) { inp.value = ''; inp.blur(); }
+  app.classList.remove('searching');
+  const body = app.querySelector('.screen-body');
+  if (body) { body.classList.remove('fadein'); void body.offsetWidth; body.classList.add('fadein'); }
+  document.getElementById('tabbar')?.classList.remove('compact');
+  setTimeout(() => { if (!ui.searching) { const l = document.getElementById('slayer'); if (l) l.innerHTML = ''; } }, 50);
+}
+document.addEventListener('focusin', ev => { if (ev.target.id === 'gsearch') enterSearch(); });
 // Bottom bar like WhatsApp: a "bubble" sits behind the selected tab and slides;
 // drag your finger along the bar and the bubble follows, let go to open that tab.
 const TABS = [['today', 'Azi', 'sun'], ['lists', 'Liste', 'grid'], ['reminders', 'Remindere', 'bell'], ['stats', 'Statistici', 'chart']];
 function renderTabbar() {
   const bar = document.getElementById('tabbar');
-  const badge = db.entries.filter(e => !e.done && catById(e.cat) && (isOverdue(e) || isDueToday(e) || reminderMissed(e))).length;
+  const badge = db.entries.filter(e => !e.done && !e.med && catById(e.cat) && (isOverdue(e) || isDueToday(e) || reminderMissed(e))).length
+    + dosesOn(new Date()).filter(x => doseLate(x, new Date())).length;
   if (!bar.querySelector('.pill')) {
     bar.innerHTML = `<span class="pill"></span>` + TABS.map(([id, label, icon]) =>
       `<button data-tab="${id}">${ICON[icon]}<span>${label}</span><span class="tbadge hidden"></span></button>`).join('');
@@ -663,15 +852,21 @@ function placePill(btn, x) {
   const bar = document.getElementById('tabbar');
   const pill = bar.querySelector('.pill');
   if (!pill || !btn) return;
-  const br = bar.getBoundingClientRect(), r = btn.getBoundingClientRect();
-  const w = r.width - 8;
-  const left = x === undefined ? r.left - br.left + 4 : Math.max(4, Math.min(br.width - w - 4, x - br.left - w / 2));
+  // layout sizes (not affected by the bar's grow/shrink animation)
+  const br = bar.getBoundingClientRect();
+  const scale = br.width / (bar.offsetWidth || br.width) || 1;
+  const w = btn.offsetWidth - 4;
+  const left = x === undefined
+    ? btn.offsetLeft + 2
+    : Math.max(4, Math.min(bar.offsetWidth - w - 4, (x - br.left) / scale - w / 2));
   pill.style.width = w + 'px';
   pill.style.transform = `translateX(${left}px)`;
 }
 function switchTab(id) {
   if (ui.tab === id && !ui.catId) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
   ui.tab = id; ui.catId = null; ui.reorder = false; ui.search = '';
+  ui.searching = false; ui.searchQ = ''; ui.searchFilter = null;
+  document.getElementById('tabbar')?.classList.remove('compact');
   render();
   window.scrollTo(0, 0);
 }
@@ -687,7 +882,8 @@ document.addEventListener('pointerdown', ev => {
   ev.preventDefault();
   tabDrag = { id: ev.pointerId, startX: ev.clientX, moved: false, over: tabAt(ev.clientX) };
   try { bar.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
-  bar.classList.add('dragging');
+  bar.classList.add('dragging', 'pressing');
+  bar.classList.remove('compact');
   placePill(tabDrag.over, ev.clientX);
   markOver(tabDrag.over);
 });
@@ -707,7 +903,7 @@ function endTabDrag(ev) {
   const target = tabDrag.over;
   tabDrag = null;
   const bar = document.getElementById('tabbar');
-  bar.classList.remove('dragging');
+  bar.classList.remove('dragging', 'pressing');
   markOver(null);
   if (ev && ev.type === 'pointercancel') { renderTabbar(); return; }
   if (target) { placePill(target); switchTab(target.dataset.tab); }
@@ -715,6 +911,16 @@ function endTabDrag(ev) {
 document.addEventListener('pointerup', endTabDrag);
 document.addEventListener('pointercancel', endTabDrag);
 window.addEventListener('resize', () => { if (!tabDrag) placePill(document.querySelector(`#tabbar button[data-tab="${ui.tab}"]`)); });
+// scrolling down: the glass bar gets a little smaller; scrolling up or at the top: back to normal
+let lastScrollY = 0;
+window.addEventListener('scroll', () => {
+  const y = window.scrollY;
+  const bar = document.getElementById('tabbar');
+  if (!bar || tabDrag) { lastScrollY = y; return; }
+  if (y < 40 || y < lastScrollY - 6) bar.classList.remove('compact');
+  else if (y > lastScrollY + 6) bar.classList.add('compact');
+  if (Math.abs(y - lastScrollY) > 6) lastScrollY = y;
+}, { passive: true });
 
 // ---------- entry editor ----------
 function newDraft(c) {
@@ -726,15 +932,23 @@ function newDraft(c) {
     hasAmount: c.usesAmount && !c.usesPaid, amountText: '', currency: c.currency || 'RON', paid: false, dir: 'out',
     vendor: '', tracking: '', priority: 0,
     hasReminder: c.reminderMode === 'always', reminder: toLocal(nextHour), repeat: 'none',
+    repInterval: 2, repEnd: 'never', repCount: 5, repUntil: dkey(addDays(new Date(), 7)), repDates: [], calMonth: dkey(new Date()).slice(0, 7),
     subs: [], remTouched: false,
   };
 }
 function draftFrom(e) {
-  return { ...clone(e), amountText: e.amount ? String(e.amount).replace('.', ',') : '', subs: clone(e.subs || []), remTouched: !!e.hasReminder };
+  const firstPicked = [...(e.repDates || [])].sort()[0];
+  return {
+    ...clone(e), amountText: e.amount ? String(e.amount).replace('.', ',') : '', subs: clone(e.subs || []), remTouched: !!e.hasReminder,
+    repInterval: e.repInterval || 2, repEnd: e.repEnd || 'never', repCount: e.repCount || 5,
+    repUntil: e.repUntil || dkey(addDays(new Date(), 7)), repDates: [...(e.repDates || [])],
+    calMonth: (firstPicked || dkey(new Date())).slice(0, 7),
+  };
 }
 function openEntry(catId, entryId) {
   const c = catById(catId);
   if (!c) return;
+  if (isMedCat(c)) { openMed(catId, entryId); return; }
   const e = entryId ? entryById(entryId) : null;
   ui.sheet = { type: 'entry', d: e ? draftFrom(e) : newDraft(c), isNew: !e };
   renderSheet();
@@ -788,14 +1002,48 @@ function entrySheetHtml() {
     const past = on && d.repeat === 'none' && parseLocal(d.reminder) < new Date();
     let h = `<div class="fhead">Reminder</div><div class="form">`;
     if (c.reminderMode === 'optional') h += `<div class="field"><span class="ico">🔔</span><span class="lbl">Amintește-mi</span>${sw('hasReminder', d.hasReminder)}</div>`;
+    const rep = d.repeat && d.repeat !== 'none';
     if (on) {
-      h += `<div class="field"><span class="lbl">Când</span><input type="datetime-local" data-bind="reminder" value="${esc(d.reminder)}"></div>
-        <div class="field"><span class="ico">🔁</span><span class="lbl">Repetă</span><select data-bind="repeat">${Object.entries(REPEATS).map(([k, v]) => `<option value="${k}" ${d.repeat === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-        <div class="quick">${quickOptions(d, c).map(([l, dt]) => `<button data-act="quick" data-v="${toLocal(dt)}">${l}</button>`).join('')}</div>`;
+      h += (d.repeat === 'dates'
+        ? `<div class="field"><span class="lbl">La ora</span><input type="time" data-bind="remTime" value="${esc(d.reminder.split('T')[1] || '09:00')}"></div>`
+        : `<div class="field"><span class="lbl">Când</span><input type="datetime-local" data-bind="reminder" value="${esc(d.reminder)}"></div>`) + `
+        <div class="field"><span class="ico">🔁</span><span class="lbl">Repetă</span><select data-bind="repeat">${Object.entries(REPEATS).map(([k, v]) => `<option value="${k}" ${d.repeat === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>`;
+      if (d.repeat === 'custom') {
+        h += `<div class="field"><span class="lbl">La fiecare ${d.repInterval} ${+d.repInterval === 1 ? 'zi' : 'zile'}</span>
+          <div class="order-btns"><button data-act="r-int" data-v="-1">−</button><button data-act="r-int" data-v="1">+</button></div></div>`;
+      }
+      if (d.repeat === 'dates') {
+        h += `<div class="fieldcol">${calPickerHtml(d)}</div>`;
+      } else if (rep) {
+        h += `<div class="fieldcol"><div class="lbl" style="font-size:14px;color:var(--muted);margin-bottom:6px">Se oprește</div>
+          <div class="segin" style="margin:0">
+            <button class="${d.repEnd === 'never' ? 'on' : ''}" data-act="r-end" data-v="never">Niciodată</button>
+            <button class="${d.repEnd === 'count' ? 'on' : ''}" data-act="r-end" data-v="count">După nr. de ori</button>
+            <button class="${d.repEnd === 'until' ? 'on' : ''}" data-act="r-end" data-v="until">La o dată</button></div></div>`;
+        if (d.repEnd === 'count') {
+          h += `<div class="field"><span class="lbl">De ${d.repCount} ${+d.repCount === 1 ? 'dată' : 'ori'}</span>
+            <div class="order-btns"><button data-act="r-count" data-v="-1">−</button><button data-act="r-count" data-v="1">+</button></div></div>
+            <div class="quick">${[3, 5, 7, 10, 14, 30].map(n => `<button data-act="r-countset" data-v="${n}">${n} ori</button>`).join('')}</div>`;
+        }
+        if (d.repEnd === 'until') h += `<div class="field"><span class="lbl">Ultima zi</span><input type="date" data-bind="repUntil" value="${esc(d.repUntil)}"></div>`;
+      }
+      h += `<div class="quick">
+          <button data-act="r-preset" data-v="5">🔁 5 zile la rând</button><button data-act="r-preset" data-v="7">🔁 7 zile la rând</button>
+          ${quickOptions(d, c).map(([l, dt]) => `<button data-act="quick" data-v="${toLocal(dt)}">${l}</button>`).join('')}</div>`;
     }
     h += `</div>`;
     if (past) h += `<div class="ffoot orange">Ora aleasă a trecut deja — alege una din viitor.</div>`;
-    else if (on) h += `<div class="ffoot">Când apeși „Salvează”, se deschide Calendarul: apasă „Adaugă” și alarma sună la ora asta, chiar dacă aplicația e închisă.</div>`;
+    else if (on) {
+      let sum = '';
+      if (d.repeat === 'dates') {
+        const n = d.repDates.length;
+        sum = n ? `Reminder în ${n} ${n === 1 ? 'zi' : 'zile'}, la ora ${(d.reminder.split('T')[1] || '')}. ` : 'Apasă pe zilele în care vrei reminderul. ';
+      } else if (rep) {
+        const last = remLast({ ...d });
+        sum = last ? `Ultimul reminder: ${fLong.format(last)}, ${fTime.format(last)}. ` : 'Se repetă fără oprire. ';
+      }
+      h += `<div class="ffoot" id="remsum">${esc(sum)}La „Salvează” se deschide Calendarul: apeși „Adaugă” și alarma sună chiar dacă aplicația e închisă.</div>`;
+    }
     return h;
   };
 
@@ -891,6 +1139,8 @@ function saveEntry(withAlarm) {
   const d = s.d;
   if (!d.title.trim()) return;
   const c = catById(d.cat);
+  const remOn = c.reminderMode === 'always' || (c.reminderMode === 'optional' && d.hasReminder);
+  if (remOn && d.repeat === 'dates' && !d.repDates.length) { toast('Alege în calendar cel puțin o zi'); return; }
   let e = d.id ? entryById(d.id) : null;
   if (!e) { e = { id: uid(), createdAt: Date.now() }; db.entries.push(e); }
   const amount = parseAmount(d.amountText);
@@ -910,7 +1160,12 @@ function saveEntry(withAlarm) {
     vendor: d.vendor.trim(), tracking: d.tracking.trim(),
     priority: c.usesPriority ? +d.priority : 0,
     hasReminder: c.reminderMode === 'always' ? true : c.reminderMode === 'off' ? false : !!d.hasReminder,
-    reminder: d.reminder, repeat: d.repeat || 'none',
+    reminder: d.repeat === 'dates' && d.repDates.length
+      ? [...d.repDates].sort()[0] + 'T' + (d.reminder.split('T')[1] || '09:00')
+      : d.reminder,
+    repeat: d.repeat || 'none',
+    repInterval: Math.max(1, +d.repInterval || 1), repEnd: d.repEnd || 'never', repCount: Math.max(1, +d.repCount || 1),
+    repUntil: d.repUntil, repDates: [...new Set(d.repDates || [])].sort(),
     subs: d.subs.filter(x => x.title.trim()).map(x => ({ id: x.id, title: x.title.trim(), done: !!x.done })),
     alarmFor: d.alarmFor || e.alarmFor || null,
   });
@@ -949,7 +1204,8 @@ function categorySheetHtml() {
 
       <div class="form" style="margin-top:14px"><div class="field"><span class="ico">🪄</span><span class="lbl">Copiază regulile de la</span>
         <select data-act-change="c-template"><option value="">alege…</option>${Object.entries(TEMPLATES).map(([k, t]) => `<option value="${k}">${t.icon} ${t.label}</option>`).join('')}</select></div></div>
-      <div class="ffoot">Ex: alege „Comenzi” ca să ai sumă, plătit/neplătit, AWB și produse.</div>
+      <div class="ffoot">${d.kind === 'meds' ? 'Asta e o listă de medicamente: are câmpurile ei (doză, ore, zile, durata tratamentului).' : 'Ex: alege „Comenzi” ca să ai sumă, plătit/neplătit, AWB și produse; „Medicamente” pentru tratamente.'}</div>
+      ${d.kind === 'meds' ? '' : `
 
       <div class="fhead">Ce câmpuri au elementele</div>
       <div class="form">
@@ -986,7 +1242,7 @@ function categorySheetHtml() {
         <div class="field"><span class="lbl">Grupare</span><select data-bind="c.groupMode">${Object.entries(GROUP_MODES).map(([k, v]) => `<option value="${k}" ${d.groupMode === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
         ${tg('summary', 'Sumar sus (totaluri, întârziate)', '')}
         <div class="field"><span class="lbl">Șterge automat bifatele</span><select data-bind="c.autoDelete">${[[0, 'Niciodată'], [1, 'După o zi'], [7, 'După 7 zile'], [30, 'După 30 de zile']].map(([v, l]) => `<option value="${v}" ${+d.autoDelete === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-      </div>
+      </div>`}
 
       ${!isNew ? `<button class="btn red block mt" data-act="cat-delete">Șterge lista${count ? ` (și cele ${count} elemente)` : ''}</button>` : ''}
     </div>
@@ -1116,7 +1372,8 @@ function statsHtml() {
         <div class="readout"><b>${esc(cap(fMonthLong.format(sel.d)))}</b><span>${esc(money(sel.sum, cur))} · ${nItems(sel.n)}</span></div>
         <div class="bars">${bars}</div>
       </div>
-      <div class="ffoot">Apasă pe o lună ca să vezi suma.${other.length ? ` Sumele în altă monedă (${esc(totals(other.map(e => [e.amount, e.currency])))}) nu apar în grafic.` : ''}</div>
+      <div class="ffoot">Apasă sau glisează peste luni ca să vezi ce e în ele.${other.length ? ` Sumele în altă monedă (${esc(totals(other.map(e => [e.amount, e.currency])))}) nu apar în grafic.` : ''}</div>
+      ${monthListHtml(sel, main.filter(e => monthKey(itemDate(e, c)) === sel.key), c.name)}
       ${vendorsHtml}
       <div class="fhead">Pe scurt</div>
       <div class="form">
@@ -1147,17 +1404,11 @@ function searchResultsHtml(raw) {
   if (!hits.length && !listHits.length) return `<div class="empty"><div class="big">🤷</div><b>Nimic găsit</b>Nu am găsit nimic pentru „${esc(raw.trim())}”.</div>`;
   let html = '';
   if (listHits.length) {
-    html += `<div class="sec-title">Liste</div><div class="group">${listHits.map(c => `
+    html += `<div class="sl-in"><div class="sec-title">Liste</div><div class="group">${listHits.map(c => `
       <div class="catrow" data-act="search-cat" data-id="${c.id}"><div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
-      <div style="flex:1"><div class="catname">${esc(c.name)}</div></div><span class="chev">${ICON.chev}</span></div>`).join('')}</div>`;
+      <div style="flex:1"><div class="catname">${esc(c.name)}</div></div><span class="chev">${ICON.chev}</span></div>`).join('')}</div></div>`;
   }
-  for (const c of cats()) {
-    const items = hits.filter(e => e.cat === c.id);
-    if (!items.length) continue;
-    html += `<div class="sec-title">${c.icon} ${esc(c.name)} · ${items.length}</div>
-      <div class="group">${sortEntries(items).map(e => rowHtml(e, {})).join('')}</div>`;
-  }
-  return html;
+  return html + resultsByList(hits);
 }
 function searchSheetHtml() {
   const s = ui.sheet;
@@ -1173,6 +1424,315 @@ function searchSheetHtml() {
 function refreshSearch() {
   const box = document.getElementById('gresults');
   if (box && ui.sheet?.type === 'search') box.innerHTML = searchResultsHtml(ui.sheet.q);
+}
+
+// ---------- month calendar to pick several days (reminder "Zile alese din calendar") ----------
+function calPickerHtml(d) {
+  const [y, m] = (d.calMonth || dkey(new Date()).slice(0, 7)).split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const offset = (first.getDay() + 6) % 7;            // Monday first
+  const daysIn = new Date(y, m, 0).getDate();
+  const today = startOfDay(new Date());
+  const thisMonth = today.getFullYear() === y && today.getMonth() === m - 1;
+  let cells = '';
+  for (let i = 0; i < offset; i++) cells += '<span></span>';
+  for (let day = 1; day <= daysIn; day++) {
+    const k = `${y}-${pad(m)}-${pad(day)}`;
+    const date = new Date(y, m - 1, day);
+    const past = date < today;
+    const on = d.repDates.includes(k);
+    cells += `<button class="${on ? 'on' : ''} ${sameDay(date, today) ? 'today' : ''}" ${past ? 'disabled' : `data-act="cal-day" data-v="${k}"`}>${day}</button>`;
+  }
+  const title = cap(new Intl.DateTimeFormat('ro-RO', { month: 'long', year: 'numeric' }).format(first));
+  return `<div class="calpick">
+    <div class="cal-head"><button data-act="cal-nav" data-v="-1" ${thisMonth ? 'disabled' : ''}>${ICON.back}</button><b>${esc(title)}</b><button data-act="cal-nav" data-v="1"><span style="display:inline-block;transform:scaleX(-1)">${ICON.back}</span></button></div>
+    <div class="cal-grid cal-wd">${['L', 'Ma', 'Mi', 'J', 'V', 'S', 'D'].map(w => `<span>${w}</span>`).join('')}</div>
+    <div class="cal-grid">${cells}</div>
+    ${d.repDates.length ? `<div class="cal-foot"><span>${d.repDates.length} ${d.repDates.length === 1 ? 'zi aleasă' : 'zile alese'}</span><button data-act="cal-clear">Șterge alegerea</button></div>` : ''}
+  </div>`;
+}
+
+// ---------- medicines ----------
+// Each medicine is one treatment: dose, times of day, which days, start date and how long
+// (a number of days, until a date, or forever). Doses taken are logged per day.
+const dkey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const dayOf = s => parseLocal((s || dkey(new Date())) + 'T00:00');
+const WD_SHORT = ['D', 'L', 'Ma', 'Mi', 'J', 'V', 'S'];
+const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const isMedCat = c => c?.kind === 'meds';
+
+function medEnd(m) {
+  const s = dayOf(m.start);
+  if (m.durType === 'days') return addDays(s, Math.max(1, +m.days || 1) - 1);
+  if (m.durType === 'until' && m.until) return dayOf(m.until);
+  return null;
+}
+function medOnDay(e, day) {
+  const m = e.med;
+  if (!m || e.done) return false;
+  const d0 = startOfDay(day);
+  if (d0 < dayOf(m.start)) return false;
+  const end = medEnd(m);
+  if (end && d0 > end) return false;
+  if (m.weekdays && m.weekdays.length && !m.weekdays.includes(d0.getDay())) return false;
+  return true;
+}
+function medStatus(e) {
+  const m = e.med;
+  const today = startOfDay(new Date());
+  const s = dayOf(m.start), end = medEnd(m);
+  if (e.done) return { text: 'Oprit', color: 'var(--muted)', state: 'stopped' };
+  if (today < s) return { text: `Începe ${fmtDay(s).toLowerCase()}`, color: 'var(--blue)', state: 'future' };
+  if (end && today > end) return { text: 'Tratament terminat', color: 'var(--green)', state: 'finished' };
+  if (!end) return { text: 'Permanent', color: 'var(--purple)', state: 'active' };
+  const total = Math.round((end - s) / 86400000) + 1;
+  const n = Math.round((today - s) / 86400000) + 1;
+  const left = total - n;
+  return { text: `Ziua ${n} din ${total} · ${left === 0 ? 'ultima zi' : left === 1 ? 'mai e 1 zi' : `mai sunt ${left} zile`}`, color: 'var(--orange)', state: 'active' };
+}
+function medDaysText(m) {
+  if (!m.weekdays || !m.weekdays.length || m.weekdays.length === 7) return 'Zilnic';
+  return WD_ORDER.filter(d => m.weekdays.includes(d)).map(d => WD_SHORT[d]).join(', ');
+}
+function dosesOn(day) {
+  const out = [];
+  const k = dkey(day);
+  for (const e of db.entries) {
+    if (!e.med || !isMedCat(catById(e.cat)) || !medOnDay(e, day)) continue;
+    for (const t of e.med.times) out.push({ e, t, taken: (e.med.taken?.[k] || []).includes(t) });
+  }
+  return out.sort((a, b) => a.t.localeCompare(b.t) || a.e.title.localeCompare(b.e.title, 'ro'));
+}
+function doseLate(x, day) {
+  const [h, m] = x.t.split(':').map(Number);
+  return !x.taken && sameDay(day, new Date()) && atTime(day, h, m) < new Date();
+}
+function toggleDose(eid, t) {
+  const e = entryById(eid);
+  if (!e?.med) return;
+  const k = dkey(new Date());
+  e.med.taken ||= {};
+  const arr = (e.med.taken[k] ||= []);
+  const i = arr.indexOf(t);
+  if (i >= 0) arr.splice(i, 1); else arr.push(t);
+  save();
+}
+function medAdherence(e) {
+  let sched = 0, taken = 0;
+  const today = startOfDay(new Date()), now = new Date();
+  for (let i = 0; i < 30; i++) {
+    const d = addDays(today, -i);
+    if (!medOnDay(e, d)) continue;
+    for (const t of e.med.times) {
+      const [h, m] = t.split(':').map(Number);
+      if (atTime(d, h, m) > now) continue;
+      sched++;
+      if ((e.med.taken?.[dkey(d)] || []).includes(t)) taken++;
+    }
+  }
+  return { sched, taken };
+}
+function doseRowsHtml(doses, day) {
+  // grouped by time of day: "08:00 · 2 medicamente"
+  const byTime = {};
+  doses.forEach(x => { (byTime[x.t] ||= []).push(x); });
+  return Object.keys(byTime).sort().map(t => {
+    const list = byTime[t];
+    const late = list.some(x => doseLate(x, day));
+    const allDone = list.every(x => x.taken);
+    return `<div class="sec-title ${late ? 'red' : ''}">${t}${allDone ? ' · ✓ luate' : late ? ' · nu le-ai luat încă' : ''}</div>
+      <div class="group">${list.map(x => {
+        const col = colorOf(catById(x.e.cat));
+        return `<div class="row ${x.taken ? 'done' : ''}" data-act="open" data-id="${x.e.id}">
+          <button class="check ${x.taken ? 'on' : ''}" style="--c:${col}" data-act="dose" data-id="${x.e.id}" data-t="${x.t}" aria-label="Am luat">${ICON.check}</button>
+          <div class="rbody"><div class="rtitle">${esc(x.e.title)}</div>
+            <div class="chips">${x.e.med.dose ? chip(x.e.med.dose, 'var(--muted)') : ''}${x.e.details ? chip(x.e.details, 'var(--muted)') : ''}</div></div>
+          <div class="dtime" style="color:${doseLate(x, day) ? 'var(--red)' : 'var(--muted)'}">${x.t}</div></div>`;
+      }).join('')}</div>`;
+  }).join('');
+}
+function medRowHtml(e) {
+  const c = catById(e.cat), col = colorOf(c), m = e.med, st = medStatus(e);
+  const chips = [];
+  if (m.dose) chips.push(chip(m.dose, 'var(--muted)'));
+  chips.push(chip('🕐 ' + m.times.join(' · '), 'var(--blue)'));
+  chips.push(chip(medDaysText(m), 'var(--muted)'));
+  chips.push(chip(st.text, st.color));
+  if (st.state === 'active') {
+    const a = medAdherence(e);
+    if (a.sched) chips.push(chip(`Luate ${a.taken}/${a.sched}`, a.taken === a.sched ? 'var(--green)' : 'var(--orange)'));
+  }
+  if (m.alarm && (st.state === 'active' || st.state === 'future')) {
+    chips.push(alarmAdded(e) ? chip('✓ în Calendar', 'var(--green)') : chip('+ Pune alarmele', 'var(--accent)', `data-act="alarm" data-id="${e.id}"`));
+  }
+  return `<div class="swipe" data-swipe="entry" data-id="${e.id}"><button class="swipe-del" data-act="swipe-del" data-kind="entry" data-id="${e.id}">${ICON.trash}<span>Șterge</span></button>
+    <div class="row swipe-content ${st.state === 'finished' || st.state === 'stopped' ? 'done' : ''}" data-act="open" data-id="${e.id}">
+      <div class="medico" style="--c:${col}">💊</div>
+      <div class="rbody"><div class="rtitle">${esc(e.title)}</div>${e.details ? `<div class="rdetails">${esc(e.details)}</div>` : ''}<div class="chips">${chips.join('')}</div></div>
+    </div></div>`;
+}
+function screenMeds(c) {
+  const col = colorOf(c);
+  const today = new Date();
+  const doses = dosesOn(today);
+  const takenN = doses.filter(x => x.taken).length;
+  const meds = db.entries.filter(e => e.cat === c.id && e.med);
+  const groups = { active: [], future: [], finished: [], stopped: [] };
+  meds.forEach(e => groups[medStatus(e).state].push(e));
+  const sec = (title, list) => list.length ? `<div class="sec-title">${title}</div><div class="group">${list.map(medRowHtml).join('')}</div>` : '';
+  return `
+    <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
+      <div class="right"><button class="iconbtn fill" style="background:${col}" data-act="new" data-id="${c.id}">${ICON.plus}</button></div></div>
+    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    ${doses.length ? `
+      <div class="medtoday" style="--c:${col}">
+        <div><div class="mt-l">Azi</div><div class="mt-v">${takenN} din ${doses.length} luate</div></div>
+        <div class="mt-bar"><span style="width:${Math.round(takenN / doses.length * 100)}%"></span></div>
+      </div>
+      ${doseRowsHtml(doses, today)}` : meds.length ? `<div class="banner" style="margin-top:6px"><b>Azi nu ai nimic de luat ✓</b></div>` : ''}
+    ${!meds.length ? `<div class="empty"><div class="big">💊</div><b>Niciun medicament încă</b>Adaugă unul cu +: doza, orele, câte zile (sau permanent) și îți arăt în fiecare zi ce ai de luat.
+      <div class="mt"><button class="btn" style="background:${col}" data-act="new" data-id="${c.id}">Adaugă medicament</button></div></div>` : ''}
+    ${sec('Tratamente în curs', groups.active)}
+    ${sec('Urmează', groups.future)}
+    ${sec('Terminate', groups.finished)}
+    ${sec('Oprite', groups.stopped)}
+    ${meds.length ? `<div class="footnote">Bifează fiecare doză când o iei. Tratamentele cu număr de zile se termină singure.</div>` : ''}`;
+}
+
+// medicine editor
+function openMed(catId, entryId) {
+  const e = entryId ? entryById(entryId) : null;
+  const today = new Date();
+  const m = e?.med || {};
+  ui.sheet = {
+    type: 'med', isNew: !e,
+    d: {
+      id: e?.id || null, cat: catId, title: e?.title || '', details: e?.details || '', done: !!e?.done,
+      dose: m.dose || '', times: [...(m.times || ['08:00'])],
+      start: m.start || dkey(today), durType: m.durType || 'days', days: m.days || 7,
+      until: m.until || dkey(addDays(today, 30)),
+      weekdaysOn: !!(m.weekdays && m.weekdays.length && m.weekdays.length < 7),
+      weekdays: m.weekdays && m.weekdays.length ? [...m.weekdays] : [1, 2, 3, 4, 5, 6, 0],
+      alarm: e ? !!m.alarm : true,
+    },
+  };
+  renderSheet();
+  if (!e) setTimeout(() => document.getElementById('f-title')?.focus(), 300);
+}
+function medSummary(d) {
+  const m = { start: d.start, durType: d.durType, days: d.days, until: d.until };
+  const s = dayOf(d.start), end = medEnd(m);
+  const perDay = d.times.filter(Boolean).length;
+  if (!end) return `Începe ${fmtDay(s).toLowerCase()}, fără dată de final · ${perDay} ${perDay === 1 ? 'doză' : 'doze'} pe zi.`;
+  const total = Math.round((end - s) / 86400000) + 1;
+  return `De ${fmtDay(s).toLowerCase()} până ${sameDay(end, s) ? 'în aceeași zi' : 'pe ' + fLong.format(end)} (${total} ${total === 1 ? 'zi' : 'zile'}) · ${perDay} ${perDay === 1 ? 'doză' : 'doze'} pe zi.`;
+}
+function medSheetHtml() {
+  const { d, isNew } = ui.sheet;
+  const c = catById(d.cat);
+  const col = colorOf(c);
+  return `<div class="overlay"></div>
+  <div class="panel" style="--accent:${col}">
+    <div class="panel-head"><button data-act="sheet-close">Renunță</button><div class="t">${isNew ? 'Medicament nou' : 'Editează'}</div>
+      <button class="save" data-act="med-save" ${d.title.trim() ? '' : 'disabled'}>Salvează</button></div>
+    <div class="panel-body">
+      <div class="form">
+        <div class="field"><input type="text" id="f-title" class="titlein" data-bind="title" placeholder="Numele medicamentului" value="${esc(d.title)}" enterkeyhint="done"></div>
+        <div class="field"><input type="text" data-bind="m.dose" placeholder="Doza (ex: 1 pastilă, 500 mg, 10 picături)" value="${esc(d.dose)}"></div>
+        <div class="field"><input type="text" data-bind="details" placeholder="Notă (ex: după masă, cu apă)" value="${esc(d.details)}"></div>
+      </div>
+
+      <div class="fhead">La ce ore</div>
+      <div class="form">
+        ${d.times.map((t, i) => `<div class="field"><span class="ico">🕐</span><span class="lbl">Doza ${i + 1}</span>
+          <input type="time" data-mtime="${i}" value="${esc(t)}">
+          ${d.times.length > 1 ? `<button class="x" data-act="m-time-del" data-i="${i}" aria-label="Șterge" style="color:var(--muted);font-size:22px;width:30px">×</button>` : ''}</div>`).join('')}
+        <button class="linkrow" data-act="m-time-add">${ICON.plus} Adaugă o oră</button>
+      </div>
+      <div class="quick" style="--pink:${col};padding:10px 2px">
+        <button data-act="m-preset" data-v="1">1× pe zi</button><button data-act="m-preset" data-v="2">2× pe zi</button>
+        <button data-act="m-preset" data-v="3">3× pe zi</button><button data-act="m-preset" data-v="4">4× pe zi</button>
+      </div>
+
+      <div class="fhead">În ce zile</div>
+      <div class="form"><div class="fieldcol">
+        <div class="segin" style="margin:0"><button class="${!d.weekdaysOn ? 'on' : ''}" data-act="m-wdmode" data-v="0">Zilnic</button><button class="${d.weekdaysOn ? 'on' : ''}" data-act="m-wdmode" data-v="1">Anumite zile</button></div>
+        ${d.weekdaysOn ? `<div class="wdays">${WD_ORDER.map(w => `<button class="${d.weekdays.includes(w) ? 'on' : ''}" style="--c:${col}" data-act="m-wd" data-v="${w}">${WD_SHORT[w]}</button>`).join('')}</div>` : ''}
+      </div></div>
+
+      <div class="fhead">Cât timp</div>
+      <div class="form">
+        <div class="field"><span class="lbl">Începe</span><input type="date" data-bind="m.start" value="${esc(d.start)}"></div>
+        <div class="fieldcol"><div class="segin" style="margin:0">
+          <button class="${d.durType === 'days' ? 'on' : ''}" data-act="m-dur" data-v="days">Nr. de zile</button>
+          <button class="${d.durType === 'until' ? 'on' : ''}" data-act="m-dur" data-v="until">Până la</button>
+          <button class="${d.durType === 'forever' ? 'on' : ''}" data-act="m-dur" data-v="forever">Permanent</button></div></div>
+        ${d.durType === 'days' ? `<div class="field"><span class="lbl">${d.days} ${+d.days === 1 ? 'zi' : 'zile'}</span>
+            <div class="order-btns"><button data-act="m-days" data-v="-1">−</button><button data-act="m-days" data-v="1">+</button></div></div>
+          <div class="quick" style="--pink:${col}">${[3, 5, 7, 10, 14, 21, 30].map(n => `<button data-act="m-daysset" data-v="${n}">${n} zile</button>`).join('')}</div>` : ''}
+        ${d.durType === 'until' ? `<div class="field"><span class="lbl">Ultima zi</span><input type="date" data-bind="m.until" value="${esc(d.until)}"></div>` : ''}
+      </div>
+      <div class="ffoot" id="medsum">${esc(medSummary(d))}</div>
+
+      <div class="form" style="margin-top:18px">
+        <div class="field"><span class="ico">🔔</span><span class="lbl">Alarmă la fiecare oră</span>${sw('m.alarm', d.alarm)}</div>
+      </div>
+      <div class="ffoot">${d.alarm ? 'La salvare se deschide Calendarul o singură dată, pentru toate orele: apeși „Adaugă”. Alarmele se opresc singure la finalul tratamentului.' : 'Fără alarme: vezi dozele doar în aplicație.'}</div>
+
+      ${!isNew ? `<div class="form" style="margin-top:24px"><div class="field"><span class="ico">⏹</span><span class="lbl">Oprit (nu-l mai iau)</span>${sw('m.done', d.done)}</div></div>
+        <button class="btn red block mt" data-act="med-delete">Șterge medicamentul</button>` : ''}
+    </div>
+  </div>`;
+}
+function saveMed() {
+  const d = ui.sheet.d;
+  if (!d.title.trim()) return;
+  const times = [...new Set(d.times.filter(Boolean))].sort();
+  if (!times.length) { toast('Pune cel puțin o oră'); return; }
+  if (d.weekdaysOn && !d.weekdays.length) { toast('Alege cel puțin o zi'); return; }
+  let e = d.id ? entryById(d.id) : null;
+  if (!e) { e = { id: uid(), createdAt: Date.now(), cat: d.cat, med: { taken: {} } }; db.entries.push(e); }
+  Object.assign(e, {
+    cat: d.cat, title: d.title.trim(), details: d.details.trim(),
+    done: !!d.done, doneAt: d.done ? (e.doneAt || Date.now()) : null,
+    hasDeadline: false, hasReminder: false, hasAmount: false, amount: 0, currency: 'RON',
+    group: '', subs: [], vendor: '', tracking: '', priority: 0, repeat: 'none',
+  });
+  e.med = {
+    ...(e.med || {}), dose: d.dose.trim(), times, start: d.start || dkey(new Date()),
+    durType: d.durType, days: Math.max(1, Math.min(3650, +d.days || 1)), until: d.until,
+    weekdays: d.weekdaysOn ? [...d.weekdays] : null, alarm: !!d.alarm, taken: e.med?.taken || {},
+  };
+  save();
+  closeSheet();
+  const st = medStatus(e).state;
+  if (e.med.alarm && !e.done && st !== 'finished' && !alarmAdded(e)) addAlarm(e);
+  else toast('Salvat ✓');
+}
+function buildMedIcs(e) {
+  const m = e.med;
+  const BY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+  let s = dayOf(m.start);
+  if (m.weekdays && m.weekdays.length) { for (let i = 0; i < 7 && !m.weekdays.includes(s.getDay()); i++) s = addDays(s, 1); }
+  const end = medEnd(m);
+  const now = new Date();
+  const stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}00Z`;
+  const out = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//MindMe//RO', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  for (const t of m.times) {
+    const [h, mi] = t.split(':').map(Number);
+    const start = atTime(s, h, mi);
+    let rule = m.weekdays && m.weekdays.length ? `FREQ=WEEKLY;BYDAY=${m.weekdays.map(w => BY[w]).join(',')}` : 'FREQ=DAILY';
+    if (end) rule += `;UNTIL=${icsDate(atTime(end, 23, 59))}`;
+    out.push('BEGIN:VEVENT', `UID:${e.id}-${t.replace(':', '')}@mindme`, `DTSTAMP:${stamp}`,
+      `DTSTART:${icsDate(start)}`, `DTEND:${icsDate(new Date(start.getTime() + 10 * 60000))}`,
+      `SUMMARY:${icsEscape('💊 ' + e.title + (m.dose ? ' – ' + m.dose : ''))}`,
+      `DESCRIPTION:${icsEscape([e.details, medDaysText(m) + ', ' + (end ? 'până pe ' + fLong.format(end) : 'permanent'), '— din MindMe'].filter(Boolean).join('\n'))}`,
+      `RRULE:${rule}`,
+      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape('💊 ' + e.title)}`, 'TRIGGER:-PT0M', 'END:VALARM',
+      'END:VEVENT');
+  }
+  out.push('END:VCALENDAR');
+  return out.join('\r\n');
 }
 
 // ---------- "Statistici" tab ----------
@@ -1215,7 +1775,7 @@ function generalStatsHtml() {
   const entries = db.entries.filter(e => catById(e.cat));
   if (!entries.length) return `<div class="empty"><div class="big">📊</div><b>Încă nu sunt date</b>Adaugă câteva lucruri în liste și aici vezi cum stai.</div>`;
   const { months, start } = rangeOf(s, entries.map(e => e.createdAt));
-  const active = entries.filter(e => !e.done);
+  const active = entries.filter(e => !e.done && !e.med);
   const overdueNow = active.filter(e => isOverdue(e) || reminderMissed(e)).length;
   const done = entries.filter(e => e.done && e.doneAt && e.doneAt >= +start);
   const added = entries.filter(e => e.createdAt >= +start);
@@ -1248,10 +1808,10 @@ function generalStatsHtml() {
 
   return `
     <div class="tiles">
-      ${tile('Active acum', active.length, 'var(--accent)')}
-      ${tile('Întârziate acum', overdueNow, overdueNow ? 'var(--red)' : 'var(--muted)')}
-      ${tile('Bifate', done.length, 'var(--green)')}
-      ${tile('Gata la timp', rate, 'var(--blue)')}
+      ${tile('Active acum', active.length, 'var(--accent)', 'st-active')}
+      ${tile('Întârziate acum', overdueNow, overdueNow ? 'var(--red)' : 'var(--muted)', 'st-overdue')}
+      ${tile('Bifate', done.length, 'var(--green)', 'st-done')}
+      ${tile('Gata la timp', rate, 'var(--blue)', 'st-ontime')}
     </div>
     <div class="segin" style="margin-top:20px">
       <button class="${metric === 'done' ? 'on' : ''}" data-act="stat-metric" data-v="done">✓ Bifate</button>
@@ -1261,13 +1821,14 @@ function generalStatsHtml() {
       <div class="readout"><b>${esc(cap(fMonthLong.format(sel.d)))}</b><span>${nItems(sel.n)}</span></div>
       <div class="bars">${barsHtml(buckets, sel.key, metric === 'done' ? '#2EB87A' : '#7C5CFA', 'stat-sel', b => b.n)}</div>
     </div>
-    <div class="ffoot">${metric === 'done' ? 'Câte ai bifat' : 'Câte ai adăugat'} în fiecare lună. Apasă pe o lună ca să vezi numărul.</div>
+    <div class="ffoot">${metric === 'done' ? 'Câte ai bifat' : 'Câte ai adăugat'} în fiecare lună. Apasă sau glisează peste luni ca să vezi ce e în ele.</div>
+    ${monthListHtml(sel, (metric === 'done' ? done.filter(e => monthKey(new Date(e.doneAt)) === sel.key) : added.filter(e => monthKey(new Date(e.createdAt)) === sel.key)).filter(e => !e.med), metric === 'done' ? 'Bifate' : 'Adăugate')}
     ${per.length ? `<div class="fhead">Bifate pe liste</div><div class="form">${per.map(x => hbarRow(`${x.c.icon} ${esc(x.c.name)}`, x.n, pmax ? x.n / pmax : 0, colorOf(x.c), '')).join('')}</div>` : ''}
     <div class="fhead">Remindere</div>
     <div class="tiles three">
-      ${tile('Programate', remUpcoming, 'var(--pink)')}
-      ${tile('Ratate', remMissed, remMissed ? 'var(--red)' : 'var(--muted)')}
-      ${tile('Repetate', remRepeat, 'var(--purple)')}
+      ${tile('Programate', remUpcoming, 'var(--pink)', 'st-remup')}
+      ${tile('Ratate', remMissed, remMissed ? 'var(--red)' : 'var(--muted)', 'st-remmiss')}
+      ${tile('Repetate', remRepeat, 'var(--purple)', 'st-remrep')}
     </div>
     ${best ? `<div class="fhead">Pe scurt</div><div class="form">
       <div class="field"><span class="lbl">Ziua în care bifezi cel mai mult</span><b>${cap(WEEKDAYS[wd.indexOf(best)])}</b></div>
@@ -1303,12 +1864,37 @@ function screenStats() {
   else if (s.view === 'liste') body = listsStatsHtml();
   else body = generalStatsHtml();
   return `
-    <div class="topbar"><div class="left">${brand()}</div><div class="right"></div></div>
-    <h1>Statistici</h1>
+    ${mainHead('Statistici', '')}
     <div class="seg" style="margin-top:0">${views.map(([k, l]) => `<button class="${s.view === k ? 'on' : ''}" data-act="stat-view" data-v="${k}">${l}</button>`).join('')}</div>
     ${s.view !== 'liste' ? `<div class="segin" style="margin:12px 0 14px">${[['6', '6 luni'], ['12', '12 luni'], ['all', 'Tot']].map(([k, l]) => `<button class="${s.range === k ? 'on' : ''}" data-act="stat-range" data-v="${k}">${l}</button>`).join('')}</div>` : '<div style="height:14px"></div>'}
     ${body}`;
 }
+
+// items of the selected month, under a chart
+function monthListHtml(sel, items, word) {
+  const month = cap(fMonthLong.format(sel.d));
+  if (!items.length) return `<div class="fhead">${esc(month)}</div><div class="footnote" style="margin-top:0">Nimic în luna asta.</div>`;
+  return `<div class="fhead">${esc(word)} în ${esc(month.toLowerCase())} · ${nItems(items.length)}</div>
+    <div class="group">${sortEntries(items).map(e => rowHtml(e, { showCat: true })).join('')}</div>`;
+}
+
+// tiles in "Statistici" that open the matching items (shown in the search view, with a ✕ to go back)
+function statStart() { return rangeOf(ui.stats, db.entries.map(e => e.createdAt)).start; }
+function moneyStart() { return rangeOf(ui.stats, moneyItems().map(x => +x.date)).start; }
+const STAT_FILTERS = {
+  'st-active': { label: 'Active acum', items: () => db.entries.filter(e => !e.done && !e.med && catById(e.cat)) },
+  'st-overdue': { label: 'Întârziate acum', items: () => db.entries.filter(e => !e.done && !e.med && (isOverdue(e) || reminderMissed(e))) },
+  'st-done': { label: 'Bifate în perioadă', items: () => db.entries.filter(e => e.done && !e.med && e.doneAt >= +statStart()) },
+  'st-ontime': { label: 'Cu termen, bifate', items: () => db.entries.filter(e => e.done && !e.med && e.hasDeadline && e.doneAt >= +statStart()) },
+  'st-remup': { label: 'Remindere programate', items: () => db.entries.filter(e => e.hasReminder && !e.done && !reminderMissed(e)) },
+  'st-remmiss': { label: 'Remindere ratate', items: () => db.entries.filter(reminderMissed) },
+  'st-remrep': { label: 'Remindere repetate', items: () => db.entries.filter(e => e.hasReminder && !e.done && e.repeat && e.repeat !== 'none') },
+  'mo-spent': { label: 'Cheltuit', items: () => moneyItems().filter(x => x.flow === 'spent' && x.date >= moneyStart()).map(x => x.e) },
+  'mo-received': { label: 'Primit', items: () => moneyItems().filter(x => x.flow === 'received' && x.date >= moneyStart()).map(x => x.e) },
+  'mo-all': { label: 'Tranzacții', items: () => moneyItems().filter(x => (x.flow === 'spent' || x.flow === 'received') && x.date >= moneyStart()).map(x => x.e) },
+  'mo-topay': { label: 'De plătit', items: () => moneyItems().filter(x => x.flow === 'toPay').map(x => x.e) },
+  'mo-toreceive': { label: 'De primit', items: () => moneyItems().filter(x => x.flow === 'toReceive').map(x => x.e) },
+};
 
 // ---------- money overview across all lists ----------
 // spent    = payments marked as paid ("de plătit" + bifat), orders marked "Plătit", other money items checked
@@ -1399,17 +1985,17 @@ function moneyStatsHtml() {
   return `
       ${!all.length ? `<div class="empty"><div class="big">💰</div><b>Încă nu sunt sume</b>Adaugă plăți sau comenzi cu sumă și aici vezi cât ai cheltuit și cât ai primit.</div>` : `
       <div class="tiles">
-        ${tile('Cheltuit', totals(pairs(spent)), 'var(--red)')}
-        ${tile('Primit', totals(pairs(received)), 'var(--green)')}
+        ${tile('Cheltuit', totals(pairs(spent)), 'var(--red)', 'mo-spent')}
+        ${tile('Primit', totals(pairs(received)), 'var(--green)', 'mo-received')}
       </div>
       <div class="tiles" style="margin-top:10px">
         ${tile('Diferență', (diff > 0 ? '+' : diff < 0 ? '−' : '') + money(Math.abs(diff), cur), diff >= 0 ? 'var(--green)' : 'var(--red)')}
-        ${tile('Tranzacții', spent.length + received.length, 'var(--blue)')}
+        ${tile('Tranzacții', spent.length + received.length, 'var(--blue)', 'mo-all')}
       </div>
       <div class="fhead">Încă în așteptare (acum)</div>
       <div class="tiles">
-        ${tile('De plătit', totals(pairs(toPay)), 'var(--orange)')}
-        ${tile('De primit', totals(pairs(toReceive)), 'var(--purple)')}
+        ${tile('De plătit', totals(pairs(toPay)), 'var(--orange)', 'mo-topay')}
+        ${tile('De primit', totals(pairs(toReceive)), 'var(--purple)', 'mo-toreceive')}
       </div>
 
       <div class="segin" style="margin-top:20px">
@@ -1420,7 +2006,8 @@ function moneyStatsHtml() {
         <div class="readout"><b>${esc(cap(fMonthLong.format(sel.d)))}</b><span>${esc(money(sel.sum, cur))} · ${nItems(sel.n)}</span></div>
         <div class="bars">${bars}</div>
       </div>
-      <div class="ffoot">${word} pe luni, în ${esc(cur)}. Apasă pe o lună ca să vezi suma.${other.length ? ` Sumele în altă monedă (${esc(totals(pairs(other)))}) nu apar în grafic.` : ''}</div>
+      <div class="ffoot">${word} pe luni, în ${esc(cur)}. Apasă sau glisează peste luni ca să vezi ce e în ele.${other.length ? ` Sumele în altă monedă (${esc(totals(pairs(other)))}) nu apar în grafic.` : ''}</div>
+      ${monthListHtml(sel, metricItems.filter(x => monthKey(x.date) === sel.key).map(x => x.e), word)}
 
       ${lists.length ? `<div class="fhead">${word} pe liste</div><div class="form">${lists.map(l => hbar(`${l.c.icon} ${esc(l.c.name)}`, l.sum, lmax, colorOf(l.c), nItems(l.n))).join('')}</div>` : ''}
       ${vendors.length ? `<div class="fhead">${metric === 'spent' ? 'Cui ai plătit cel mai mult' : 'De la cine ai primit cel mai mult'}</div><div class="form">${vendors.map(([n, v]) => hbar(esc(n), v.sum, vmax, color, nItems(v.n))).join('')}</div>` : ''}
@@ -1447,12 +2034,14 @@ function renderSheet() {
   const body = el.querySelector('.panel-body');
   const scroll = body ? body.scrollTop : 0;
   const t = ui.sheet.type;
-  el.innerHTML = t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml() : t === 'search' ? searchSheetHtml() : actionsHtml();
+  el.innerHTML = t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml()
+    : t === 'search' ? searchSheetHtml() : t === 'med' ? medSheetHtml() : actionsHtml();
   const nb = el.querySelector('.panel-body');
   if (nb) nb.scrollTop = scroll;
   // no slide animation on re-render
   if (body) el.querySelectorAll('.panel, .overlay').forEach(x => (x.style.animation = 'none'));
   document.body.style.overflow = 'hidden';
+  initSegs(el);
 }
 function closeSheet() { ui.sheet = null; ui.pendingRerender = false; renderSheet(); render(); }
 
@@ -1509,8 +2098,53 @@ document.addEventListener('click', ev => {
   switch (act) {
     case 'tab': switchTab(el.dataset.tab); break;
     case 'search-open': openSearch(); break;
-    case 'search-cat': ui.sheet = null; renderSheet(); ui.tab = 'lists'; ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); window.scrollTo(0, 0); break;
-    case 'open': { const e = entryById(id); if (e) openEntry(e.cat, e.id); break; }
+    // medicines
+    case 'dose': toggleDose(id, el.dataset.t); try { navigator.vibrate?.(10); } catch (e) { /* ignore */ } render(); refreshSearch(); break;
+    case 'med-save': saveMed(); break;
+    case 'med-delete': {
+      const name = s.d.title || 'medicamentul';
+      openActions(`Ștergi „${name}” și tot istoricul dozelor? Nu se poate anula.`, [
+        { label: '🗑 Șterge', danger: true, run: () => { deleteEntry(s.d.id); render(); toast('Șters'); } },
+      ]);
+      break;
+    }
+    case 'm-time-add': {
+      const last = s.d.times[s.d.times.length - 1] || '08:00';
+      const h = Math.min(23, (+last.split(':')[0] || 8) + 4);
+      s.d.times.push(`${pad(h)}:00`); renderSheet(); break;
+    }
+    case 'm-time-del': s.d.times.splice(+el.dataset.i, 1); renderSheet(); break;
+    case 'm-preset': s.d.times = { 1: ['08:00'], 2: ['08:00', '20:00'], 3: ['08:00', '14:00', '20:00'], 4: ['08:00', '12:00', '16:00', '20:00'] }[el.dataset.v]; renderSheet(); break;
+    case 'm-wdmode': s.d.weekdaysOn = el.dataset.v === '1'; renderSheet(); break;
+    case 'm-wd': {
+      const w = +el.dataset.v; const i = s.d.weekdays.indexOf(w);
+      if (i >= 0) s.d.weekdays.splice(i, 1); else s.d.weekdays.push(w);
+      renderSheet(); break;
+    }
+    case 'm-dur': s.d.durType = el.dataset.v; renderSheet(); break;
+    case 'm-days': s.d.days = Math.max(1, Math.min(3650, (+s.d.days || 1) + +el.dataset.v)); renderSheet(); break;
+    case 'm-daysset': s.d.days = +el.dataset.v; renderSheet(); break;
+    case 'search-cat': if (ui.searching && ui.searchQ) addRecent(ui.searchQ); ui.searching = false; ui.searchQ = ''; ui.searchFilter = null; ui.sheet = null; renderSheet(); ui.tab = 'lists'; ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); window.scrollTo(0, 0); break;
+    case 'open': { const e = entryById(id); if (ui.searching && ui.searchQ) addRecent(ui.searchQ); if (e) openEntry(e.cat, e.id); break; }
+    case 'search-cancel': exitSearch(); break;
+    case 'tile-filter': ui.searchFilter = el.dataset.f; ui.searchQ = ''; ui.searching = true; render(); window.scrollTo(0, 0); break;
+    case 'sugg': {
+      ui.searchFilter = el.dataset.v; ui.searchQ = '';
+      const inp = document.getElementById('gsearch'); if (inp) { inp.value = ''; inp.blur(); }
+      updateSearchLayer(); break;
+    }
+    case 'filter-clear':
+      // a filter opened from a Statistici tile → ✕ goes straight back to the stats
+      if (STAT_FILTERS[ui.searchFilter]) { exitSearch(); render(); }
+      else { ui.searchFilter = null; updateSearchLayer(); }
+      break;
+    case 'recent': {
+      ui.searchQ = el.dataset.v; ui.searchFilter = null; addRecent(ui.searchQ);
+      const inp = document.getElementById('gsearch'); if (inp) inp.value = ui.searchQ;
+      updateSearchLayer(); break;
+    }
+    case 'recent-del': recents().splice(+el.dataset.i, 1); save(); updateSearchLayer(); break;
+    case 'recent-clear': (db.settings ||= {}).recent = []; save(); updateSearchLayer(); break;
     case 'toggle': { const e = entryById(id); if (e) askThenToggle(e); break; }
     case 'undo': undoDone(id); break;
     case 'stats': openStats(id); break;
@@ -1571,6 +2205,24 @@ document.addEventListener('click', ev => {
       if (confirm(`Ștergi „${s.d.title || 'elementul'}”?`)) { deleteEntry(s.d.id); closeSheet(); toast('Șters'); }
       break;
     case 'quick': s.d.reminder = el.dataset.v; s.d.hasReminder = true; s.d.remTouched = true; renderSheet(); break;
+    // repeating reminders
+    case 'r-int': s.d.repInterval = Math.max(1, Math.min(365, (+s.d.repInterval || 1) + +el.dataset.v)); renderSheet(); break;
+    case 'r-end': s.d.repEnd = el.dataset.v; renderSheet(); break;
+    case 'r-count': s.d.repCount = Math.max(1, Math.min(999, (+s.d.repCount || 1) + +el.dataset.v)); renderSheet(); break;
+    case 'r-countset': s.d.repCount = +el.dataset.v; renderSheet(); break;
+    case 'r-preset': s.d.hasReminder = true; s.d.remTouched = true; s.d.repeat = 'daily'; s.d.repEnd = 'count'; s.d.repCount = +el.dataset.v; renderSheet(); break;
+    case 'cal-day': {
+      const k = el.dataset.v; const i = s.d.repDates.indexOf(k);
+      if (i >= 0) s.d.repDates.splice(i, 1); else s.d.repDates.push(k);
+      try { navigator.vibrate?.(6); } catch (e) { /* ignore */ }
+      renderSheet(); break;
+    }
+    case 'cal-nav': {
+      const [y, m] = s.d.calMonth.split('-').map(Number);
+      const nd = new Date(y, m - 1 + +el.dataset.v, 1);
+      s.d.calMonth = `${nd.getFullYear()}-${pad(nd.getMonth() + 1)}`; renderSheet(); break;
+    }
+    case 'cal-clear': s.d.repDates = []; renderSheet(); break;
     case 'pickgroup': s.d.group = el.dataset.v; renderSheet(); break;
     case 'dir': s.d.dir = el.dataset.v; renderSheet(); break;
     case 'dsub-toggle': { const x = s.d.subs.find(z => z.id === el.dataset.sid); if (x) x.done = !x.done; renderSheet(); break; }
@@ -1598,9 +2250,10 @@ document.addEventListener('click', ev => {
 // bound inputs (data-bind) – text fields update silently, toggles/selects re-render
 document.addEventListener('input', ev => {
   const t = ev.target;
-  if (t.id === 'gsearch' && ui.sheet?.type === 'search') {
-    ui.sheet.q = t.value;
-    refreshSearch();
+  if (t.id === 'gsearch') {
+    ui.searchQ = t.value;
+    if (t.value) ui.searchFilter = null;
+    if (!ui.searching) enterSearch(); else updateSearchLayer();
     return;
   }
   if (t.id === 'search') {
@@ -1633,6 +2286,13 @@ document.addEventListener('change', ev => {
     toast('Reguli copiate de la ' + TEMPLATES[t.value].label);
     return;
   }
+  // medicine editor: a time-of-day input (no re-render while the picker is open)
+  if (t.dataset.mtime !== undefined && ui.sheet?.type === 'med') {
+    ui.sheet.d.times[+t.dataset.mtime] = t.value;
+    const sum = document.getElementById('medsum');
+    if (sum) sum.textContent = medSummary(ui.sheet.d);
+    return;
+  }
   const b = t.dataset.bind;
   if (!b || !ui.sheet) return;
   if (t.type === 'checkbox') setBound(b, t.checked, true);
@@ -1642,6 +2302,10 @@ document.addEventListener('change', ev => {
     // (and the next tap would fall through), and the minutes could not be chosen.
     const before = ui.sheet.type === 'entry' ? ui.sheet.d.hasReminder : null;
     setBound(b, t.value, false);
+    if (ui.sheet.type === 'med') {
+      const sum = document.getElementById('medsum');
+      if (sum) sum.textContent = medSummary(ui.sheet.d);
+    }
     if (ui.sheet.type === 'entry') {
       const d = ui.sheet.d;
       const remInput = document.querySelector('[data-bind="reminder"]');
@@ -1666,11 +2330,12 @@ document.addEventListener('focusout', ev => {
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && ev.target.id === 'newsub') { ev.preventDefault(); addDraftSub(); }
   else if (ev.key === 'Enter' && ev.target.id === 'f-title') { ev.preventDefault(); ev.target.blur(); }
+  else if (ev.key === 'Enter' && ev.target.id === 'gsearch') { ev.preventDefault(); addRecent(ev.target.value); ev.target.blur(); }
 });
 
 function setBound(b, value, rerender) {
   const s = ui.sheet;
-  if (b.startsWith('c.')) {
+  if (b.startsWith('c.') || b.startsWith('m.')) {
     const k = b.slice(2);
     s.d[k] = value;
   } else {
@@ -1680,6 +2345,9 @@ function setBound(b, value, rerender) {
       const c = catById(value);
       if (c.reminderMode === 'always') d.hasReminder = true;
       if (c.usesAmount && !c.usesPaid) d.hasAmount = true;
+    } else if (b === 'remTime') {
+      if (value) d.reminder = (d.reminder.split('T')[0] || dkey(new Date())) + 'T' + value;
+      d.remTouched = true;
     } else if (b === 'deadlineDate') {
       if (value) d.deadline = value + 'T12:00';
       applyAutoReminder(d);
@@ -1934,6 +2602,95 @@ function endLongDrag() {
 }
 document.addEventListener('pointerup', endLongDrag);
 document.addEventListener('pointercancel', ev => { if (!ldrag) cancelLongPress(); else endLongDrag(); });
+
+// ---------- segmented buttons: sliding bubble + drag your finger across (like the bottom bar) ----------
+const segPos = {};
+const segKey = seg => [...seg.querySelectorAll(':scope > button')].map(b => `${b.dataset.act || ''}:${b.dataset.v || b.dataset.f || ''}`).join('|');
+const setSegPill = (p, pos) => { p.style.width = pos.width + 'px'; p.style.transform = `translateX(${pos.left}px)`; };
+function initSegs(root) {
+  (root || document).querySelectorAll('.seg, .segin').forEach(seg => {
+    let pill = seg.querySelector(':scope > .segpill');
+    if (!pill) { pill = document.createElement('span'); pill.className = 'segpill'; seg.prepend(pill); }
+    const on = seg.querySelector(':scope > button.on');
+    if (!on || !on.offsetWidth) { pill.style.opacity = on ? '' : '0'; return; }
+    pill.style.opacity = '';
+    const key = segKey(seg);
+    const to = { left: on.offsetLeft, width: on.offsetWidth };
+    const from = segPos[key];
+    seg.classList.add('noanim');
+    setSegPill(pill, from && from.left !== to.left ? from : to);
+    void pill.offsetWidth;
+    seg.classList.remove('noanim');
+    if (from && from.left !== to.left) requestAnimationFrame(() => setSegPill(pill, to));
+    segPos[key] = to;
+  });
+}
+let segDrag = null;
+document.addEventListener('pointerdown', ev => {
+  const seg = ev.target.closest('.seg, .segin');
+  if (!seg || ev.button > 0) return;
+  segDrag = { seg, id: ev.pointerId, x: ev.clientX, moved: false, over: null, left: 0, width: 0 };
+});
+document.addEventListener('pointermove', ev => {
+  if (!segDrag || ev.pointerId !== segDrag.id) return;
+  const { seg } = segDrag;
+  if (!segDrag.moved && Math.abs(ev.clientX - segDrag.x) < 7) return;
+  segDrag.moved = true;
+  seg.classList.add('dragging');
+  const btns = [...seg.querySelectorAll(':scope > button')];
+  const sr = seg.getBoundingClientRect();
+  const over = btns.find(b => { const r = b.getBoundingClientRect(); return ev.clientX >= r.left && ev.clientX < r.right; })
+    || (ev.clientX < sr.left + sr.width / 2 ? btns[0] : btns[btns.length - 1]);
+  if (over !== segDrag.over) { segDrag.over = over; try { navigator.vibrate?.(6); } catch (e) { /* ignore */ } }
+  btns.forEach(b => b.classList.toggle('over', b === over));
+  const w = over.offsetWidth;
+  const left = Math.max(2, Math.min(seg.offsetWidth - w - 2, ev.clientX - sr.left - w / 2));
+  segDrag.left = left; segDrag.width = w;
+  const pill = seg.querySelector(':scope > .segpill');
+  if (pill) setSegPill(pill, { left, width: w });
+});
+function endSegDrag(ev) {
+  if (!segDrag || (ev && ev.pointerId !== segDrag.id)) return;
+  const d = segDrag;
+  segDrag = null;
+  d.seg.classList.remove('dragging');
+  d.seg.querySelectorAll('.over').forEach(b => b.classList.remove('over'));
+  if (!d.moved || !d.over) return;
+  segPos[segKey(d.seg)] = { left: d.left, width: d.width };   // the bubble continues from where your finger was
+  if (d.over.classList.contains('on')) { initSegs(d.seg.parentElement); }
+  else d.over.click();
+  suppressClick = true;
+  setTimeout(() => { suppressClick = false; }, 350);
+}
+document.addEventListener('pointerup', endSegDrag);
+document.addEventListener('pointercancel', endSegDrag);
+
+// ---------- charts: slide your finger across the months ----------
+let barDrag = null;
+document.addEventListener('pointerdown', ev => {
+  const bars = ev.target.closest('.bars');
+  if (!bars) return;
+  barDrag = { id: ev.pointerId, x: ev.clientX, moved: false, last: null, root: ev.target.closest('#sheet') ? '#sheet' : '#app' };
+});
+document.addEventListener('pointermove', ev => {
+  if (!barDrag || ev.pointerId !== barDrag.id) return;
+  if (!barDrag.moved && Math.abs(ev.clientX - barDrag.x) < 7) return;
+  barDrag.moved = true;
+  const bar = [...document.querySelectorAll(`${barDrag.root} .bars .bar`)].find(b => { const r = b.getBoundingClientRect(); return ev.clientX >= r.left && ev.clientX < r.right; });
+  if (bar && bar.dataset.k !== barDrag.last && !bar.classList.contains('sel')) {
+    barDrag.last = bar.dataset.k;
+    try { navigator.vibrate?.(5); } catch (e) { /* ignore */ }
+    bar.click();
+  }
+});
+function endBarDrag(ev) {
+  if (!barDrag || (ev && ev.pointerId !== barDrag.id)) return;
+  const moved = barDrag.moved;
+  barDrag = null;
+  if (moved) { suppressClick = true; setTimeout(() => { suppressClick = false; }, 350); }
+}
+document.addEventListener('pointerup', endBarDrag);
+document.addEventListener('pointercancel', endBarDrag);
 
 // ---------- iPhone: close the keyboard when you start scrolling ----------
 // (otherwise the blinking text cursor drifts while the panel scrolls)
