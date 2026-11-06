@@ -1114,7 +1114,8 @@ document.addEventListener('pointerdown', ev => {
   ev.preventDefault();
   tabDrag = { id: ev.pointerId, startX: ev.clientX, moved: false, over: tabAt(ev.clientX) };
   try { bar.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
-  bar.classList.add('dragging', 'pressing');
+  bar.classList.add('dragging', 'pressing', 'dragstart');
+  clearTimeout(bar._ds); bar._ds = setTimeout(() => bar.classList.remove('dragstart'), 170);
   bar.classList.remove('compact');
   placePill(tabDrag.over, ev.clientX);
   markOver(tabDrag.over);
@@ -3384,6 +3385,10 @@ document.addEventListener('pointermove', ev => {
   if (!segDrag || ev.pointerId !== segDrag.id) return;
   const { seg } = segDrag;
   if (!segDrag.moved && Math.abs(ev.clientX - segDrag.x) < 7) return;
+  if (!segDrag.moved) {
+    seg.classList.add('dragstart');
+    clearTimeout(seg._ds); seg._ds = setTimeout(() => seg.classList.remove('dragstart'), 170);
+  }
   segDrag.moved = true;
   seg.classList.add('dragging');
   const btns = [...seg.querySelectorAll(':scope > button')];

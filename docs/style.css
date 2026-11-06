@@ -362,7 +362,16 @@ body.searching #fixhead { padding-bottom: 0; }
    the bubble lifts above the icons as a clear lens: blur + saturation + bright rim + specular highlight */
 #tabbar { overflow: hidden; }
 #tabbar .tbadge { top: 1px; }
-#tabbar .pill, .segpill { transition-property: transform, width, top, bottom, scale, background, box-shadow; }
+/* while the finger drags, the bubble sits exactly under it (no transform animation = no jumps);
+   only its width/height change smoothly. When you let go it springs onto the chosen button. */
+#tabbar.dragging .pill, .seg.dragging .segpill, .segin.dragging .segpill {
+  transition: width .18s ease, top .2s ease, bottom .2s ease, background .2s, box-shadow .2s !important;
+  will-change: transform;
+}
+/* first moment of a drag: glide from the button to the finger instead of jumping */
+#tabbar.dragstart .pill, .seg.dragstart .segpill, .segin.dragstart .segpill {
+  transition: transform .16s ease-out, width .18s ease, top .2s ease, bottom .2s ease !important;
+}
 /* while dragging: a plain clear bubble (no reflections, no shadow, no stretching) that just follows the finger */
 #tabbar.dragging .pill, .seg.dragging .segpill, .segin.dragging .segpill {
   background: rgba(118,118,128,.14); box-shadow: inset 0 0 0 1px rgba(255,255,255,.6);
