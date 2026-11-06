@@ -39,6 +39,10 @@ body {
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
 }
+/* no text selection / long-press menu, except where you type */
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, select { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+img { -webkit-user-drag: none; pointer-events: none; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 input, select, textarea { font: inherit; color: var(--text); }
 
@@ -69,8 +73,17 @@ h1 .emo { font-size: 28px; }
 
 /* swipe right → delete */
 .swipe { position: relative; overflow: hidden; }
-.swipe-del { position: absolute; left: 0; top: 0; bottom: 0; width: 92px; background: var(--red); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 13px; font-weight: 700; }
-.swipe-del svg { width: 22px; height: 22px; }
+.swipe-del, .swipe-set { position: absolute; top: 0; bottom: 0; width: 92px; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 13px; font-weight: 700; transition: width .18s ease; }
+.swipe-del { left: 0; background: var(--red); }
+.swipe-set { right: 0; background: #5B6BFA; }
+.swipe-del svg, .swipe-set svg { width: 22px; height: 22px; transition: transform .18s ease; }
+.swipe[data-dir="r"] { background: var(--red); }
+.swipe[data-dir="l"] { background: #5B6BFA; }
+.swipe[data-dir="r"] .swipe-set, .swipe[data-dir="l"] .swipe-del, .swipe:not([data-dir]) .swipe-set, .swipe:not([data-dir]) .swipe-del { visibility: hidden; }
+.swipe[data-dir="r"] .swipe-del { visibility: visible; }
+.swipe[data-dir="l"] .swipe-set { visibility: visible; }
+.swipe.armed .swipe-del, .swipe.armed .swipe-set { width: 50%; }
+.swipe.armed svg { transform: scale(1.25); }
 .swipe-content { background: var(--card); position: relative; z-index: 1; transition: transform .22s cubic-bezier(.2,.9,.3,1); touch-action: pan-y; }
 .swipe + .swipe .row::before { content: ""; position: absolute; top: 0; left: 50px; right: 0; border-top: .5px solid var(--line); }
 .swipe + .swipe .catrow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; border-top: .5px solid var(--line); }
@@ -241,6 +254,13 @@ button.chip { cursor: pointer; }
 
 .brand { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; color: var(--muted); letter-spacing: .2px; }
 .brand img { width: 22px; height: 22px; border-radius: 6px; display: block; }
+
+.moneycard { display: block; width: 100%; text-align: left; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); padding: 13px 14px 14px; margin-bottom: 14px; }
+.moneycard:active { background: var(--card2); }
+.mc-head { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 16px; margin-bottom: 10px; }
+.mc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.mc-l { font-size: 12px; color: var(--muted); font-weight: 600; }
+.mc-v { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; word-break: break-word; }
 
 /* stats */
 .chart { padding: 14px 12px 10px; }

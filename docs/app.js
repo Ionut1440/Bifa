@@ -1,5 +1,5 @@
 'use strict';
-/* Notez – web app (PWA). Data stays on the phone (localStorage). */
+/* MindMe – web app (PWA). Data stays on the phone (localStorage). */
 
 const KEY = 'bifa.data.v1';
 const VERSION = '1.0';
@@ -309,7 +309,7 @@ function buildIcs(e) {
   if (e.hasDeadline) lines.push(`${c?.deadlineLabel || 'Termen'}: ${deadlineText(e)}`);
   const pending = (e.subs || []).filter(s => !s.done).map(s => '• ' + s.title);
   if (pending.length) lines.push(pending.join('\n'));
-  lines.push('— din Notez (' + (c?.name || '') + ')');
+  lines.push('— din MindMe (' + (c?.name || '') + ')');
   const rrule = { daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY' }[e.repeat];
   const out = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Bifa//RO', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
@@ -331,7 +331,7 @@ async function addAlarm(e) {
   const ics = buildIcs(e);
   e.alarmFor = alarmKey(e);
   save();
-  const name = 'notez-' + e.title.replace(/[^\p{L}\p{N}]+/gu, '-').slice(0, 30) + '.ics';
+  const name = 'mindme-' + e.title.replace(/[^\p{L}\p{N}]+/gu, '-').slice(0, 30) + '.ics';
   const blob = new Blob([ics], { type: 'text/calendar' });
   const url = URL.createObjectURL(blob);
   const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -381,7 +381,7 @@ const ICON = {
 };
 
 // ---------- rendering: shared pieces ----------
-const APP_NAME = 'Notez';
+const APP_NAME = 'MindMe';
 const brand = () => `<div class="brand"><img src="icons/icon-192.png" alt=""><span>${APP_NAME}</span></div>`;
 const chip = (text, color, act) => act
   ? `<button class="chip" style="--cc:${color}" ${act}>${esc(text)}</button>`
@@ -472,7 +472,7 @@ function screenToday() {
     else if ((d && d < tomorrow) || (r && sameDay(r, new Date()))) td.push(e);
     else if (d && d < weekEnd) wk.push(e);
   }
-  const install = !isStandalone() ? `<div class="banner"><b>📲 Pune Notez pe ecranul telefonului</b>În Safari apasă <b style="display:inline">Partajează</b> (pătratul cu săgeată) → <b style="display:inline">Adaugă pe ecranul principal</b>.</div>` : '';
+  const install = !isStandalone() ? `<div class="banner"><b>📲 Pune MindMe pe ecranul telefonului</b>În Safari apasă <b style="display:inline">Partajează</b> (pătratul cu săgeată) → <b style="display:inline">Adaugă pe ecranul principal</b>.</div>` : '';
   const sec = (title, items, cls) => items.length ? `<div class="sec-title ${cls}">${title}</div><div class="group">${items.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : '';
   return `
     <div class="topbar"><div class="left">${brand()}</div><div class="right"><button class="iconbtn fill" data-act="new-pick">${ICON.plus}</button></div></div>
@@ -504,6 +504,7 @@ function screenLists() {
          <button class="gear" data-act="cat-rules" data-id="${c.id}" aria-label="Reguli">${ICON.gear}</button>
          <span class="chev">${ICON.chev}</span>`;
     return `<div class="swipe" ${ui.reorder ? '' : 'data-swipe="cat"'} data-id="${c.id}"><button class="swipe-del" data-act="swipe-del" data-kind="cat" data-id="${c.id}">${ICON.trash}<span>Șterge</span></button>
+    <button class="swipe-set" data-act="swipe-set" data-id="${c.id}">${ICON.gear}<span>Setări</span></button>
     <div class="catrow swipe-content" data-act="${ui.reorder ? '' : 'open-cat'}" data-id="${c.id}">
       <div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
       <div style="flex:1;min-width:0"><div class="catname">${esc(c.name)}</div><div class="catsub ${over ? 'red' : ''}">${sub}</div></div>
@@ -515,6 +516,7 @@ function screenLists() {
       <div class="right"><button class="back" data-act="reorder" style="padding:6px 8px">${ui.reorder ? 'Gata' : 'Ordine'}</button>
       <button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button></div></div>
     <h1>Liste</h1>
+    ${moneyCard()}
     <div class="group">${rows || '<div class="empty">Nicio listă.</div>'}</div>
     <div class="group mt"><button class="linkrow" data-act="cat-new">${ICON.plus} Listă nouă</button></div>
     <div class="footnote">Fiecare listă are regulile ei (sumă, termen, produse, remindere…). Apasă pe <span style="display:inline-block;width:16px;vertical-align:-3px">${ICON.gear}</span> ca să le schimbi.</div>
@@ -530,6 +532,23 @@ function screenLists() {
       <button class="linkrow" data-act="import">${ICON.upload} Încarcă dintr-un backup</button>
     </div>
     <div class="footnote">Datele stau doar pe telefonul tău. Fă din când în când un backup (ex: în Fișiere / iCloud Drive). Versiunea ${VERSION}</div>`;
+}
+
+function moneyCard() {
+  if (!db.categories.some(c => c.usesAmount)) return '';
+  const items = moneyItems();
+  const now = new Date();
+  const month = items.filter(x => x.date.getFullYear() === now.getFullYear() && x.date.getMonth() === now.getMonth());
+  const pairs = l => l.map(x => [x.e.amount, x.e.currency]);
+  return `<button class="moneycard" data-act="money">
+    <div class="mc-head"><span>💰 Bani</span><span class="chev">${ICON.chev}</span></div>
+    <div class="mc-grid">
+      <div><div class="mc-l">Cheltuit luna asta</div><div class="mc-v" style="color:var(--red)">${esc(totals(pairs(month.filter(x => x.flow === 'spent'))))}</div></div>
+      <div><div class="mc-l">Primit luna asta</div><div class="mc-v" style="color:var(--green)">${esc(totals(pairs(month.filter(x => x.flow === 'received'))))}</div></div>
+      <div><div class="mc-l">De plătit</div><div class="mc-v">${esc(totals(pairs(items.filter(x => x.flow === 'toPay'))))}</div></div>
+      <div><div class="mc-l">De primit</div><div class="mc-v">${esc(totals(pairs(items.filter(x => x.flow === 'toReceive'))))}</div></div>
+    </div>
+  </button>`;
 }
 
 function categoryVisible(c) {
@@ -1034,6 +1053,129 @@ function statsHtml() {
   </div>`;
 }
 
+// ---------- money overview across all lists ----------
+// spent    = payments marked as paid ("de plătit" + bifat), orders marked "Plătit", other money items checked
+// received = "de primit" items checked
+// toPay / toReceive = the same, not done yet
+function moneyFlow(e, c) {
+  if (!c || !c.usesAmount || !e.hasAmount || !(e.amount > 0)) return null;
+  if (c.usesDir) {
+    const inc = e.dir === 'in';
+    return e.done ? (inc ? 'received' : 'spent') : (inc ? 'toReceive' : 'toPay');
+  }
+  if (c.usesPaid) return e.paid ? 'spent' : 'toPay';
+  return e.done ? 'spent' : 'toPay';
+}
+function moneyItems() {
+  const out = [];
+  for (const e of db.entries) {
+    const c = catById(e.cat);
+    const flow = moneyFlow(e, c);
+    if (flow) out.push({ e, c, flow, date: itemDate(e, c) });
+  }
+  return out;
+}
+function openMoney() {
+  ui.sheet = { type: 'money', range: '12', metric: 'spent', sel: monthKey(new Date()) };
+  renderSheet();
+}
+function moneyStatsHtml() {
+  const s = ui.sheet;
+  const now = new Date();
+  const all = moneyItems();
+  const counts = {};
+  all.forEach(x => { counts[x.e.currency] = (counts[x.e.currency] || 0) + 1; });
+  const cur = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || 'RON';
+
+  let months = +s.range;
+  if (s.range === 'all') {
+    const first = all.reduce((m, x) => Math.min(m, +x.date), +now);
+    const f = new Date(first);
+    months = Math.min(36, Math.max(1, (now.getFullYear() - f.getFullYear()) * 12 + now.getMonth() - f.getMonth() + 1));
+  }
+  const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+  const inRange = all.filter(x => x.date >= start);
+  const sum = (list, flow) => list.filter(x => x.flow === flow);
+  const pairs = list => list.map(x => [x.e.amount, x.e.currency]);
+  const mainSum = list => list.filter(x => x.e.currency === cur).reduce((t, x) => t + x.e.amount, 0);
+
+  const spent = sum(inRange, 'spent'), received = sum(inRange, 'received');
+  const toPay = sum(all, 'toPay'), toReceive = sum(all, 'toReceive');
+  const diff = mainSum(received) - mainSum(spent);
+
+  const metric = s.metric;
+  const metricItems = sum(inRange, metric).filter(x => x.e.currency === cur);
+  const color = metric === 'spent' ? '#EB4240' : '#2EB87A';
+
+  const buckets = [];
+  for (let i = 0; i < months; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+    buckets.push({ key: monthKey(d), d, sum: 0, n: 0 });
+  }
+  const byKey = Object.fromEntries(buckets.map(b => [b.key, b]));
+  for (const x of metricItems) { const b = byKey[monthKey(x.date)]; if (b) { b.sum += x.e.amount; b.n++; } }
+  const max = Math.max(0, ...buckets.map(b => b.sum));
+  const sel = byKey[s.sel] || buckets[buckets.length - 1];
+  const showEvery = months <= 12 ? 1 : months <= 24 ? 2 : 3;
+  const bars = buckets.map((b, i) => {
+    const h = max ? Math.max(b.sum ? 3 : 0, Math.round((b.sum / max) * 100)) : 0;
+    return `<button class="bar ${b === sel ? 'sel' : ''}" data-act="money-sel" data-k="${b.key}" aria-label="${esc(fMonthLong.format(b.d))}: ${esc(money(b.sum, cur))}">
+      <span class="area"><span class="col" style="height:${h}%;--c:${color}"></span></span>
+      <span class="ml">${i % showEvery === 0 || b === sel ? esc(fMonth.format(b.d).replace('.', '')) : ''}</span></button>`;
+  }).join('');
+
+  // per list
+  const perList = {};
+  for (const x of metricItems) { (perList[x.c.id] ||= { c: x.c, sum: 0, n: 0 }); perList[x.c.id].sum += x.e.amount; perList[x.c.id].n++; }
+  const lists = Object.values(perList).sort((a, b) => b.sum - a.sum);
+  const lmax = lists.length ? lists[0].sum : 0;
+  // per person / shop
+  const perV = {};
+  for (const x of metricItems) { if (!x.e.vendor) continue; (perV[x.e.vendor] ||= { sum: 0, n: 0 }); perV[x.e.vendor].sum += x.e.amount; perV[x.e.vendor].n++; }
+  const vendors = Object.entries(perV).sort((a, b) => b[1].sum - a[1].sum).slice(0, 6);
+  const vmax = vendors.length ? vendors[0][1].sum : 0;
+  const hbar = (label, v, mx, col, sub) => `<div class="hbar"><div class="hbar-top"><span>${label}</span><b>${esc(money(v, cur))}</b></div>
+    <div class="hbar-track"><span style="width:${mx ? Math.max(2, v / mx * 100) : 0}%;background:${col}"></span></div><div class="hbar-sub">${sub}</div></div>`;
+  const other = sum(inRange, metric).filter(x => x.e.currency !== cur);
+  const word = metric === 'spent' ? 'Cheltuit' : 'Primit';
+
+  return `<div class="overlay"></div>
+  <div class="panel">
+    <div class="panel-head"><button data-act="sheet-close">Închide</button><div class="t">💰 Bani</div><span style="min-width:70px"></span></div>
+    <div class="panel-body">
+      <div class="segin">${[['6', '6 luni'], ['12', '12 luni'], ['all', 'Tot']].map(([k, l]) => `<button class="${s.range === k ? 'on' : ''}" data-act="money-range" data-v="${k}">${l}</button>`).join('')}</div>
+      ${!all.length ? `<div class="empty"><div class="big">💰</div><b>Încă nu sunt sume</b>Adaugă plăți sau comenzi cu sumă și aici vezi cât ai cheltuit și cât ai primit.</div>` : `
+      <div class="tiles">
+        ${tile('Cheltuit', totals(pairs(spent)), 'var(--red)')}
+        ${tile('Primit', totals(pairs(received)), 'var(--green)')}
+      </div>
+      <div class="tiles" style="margin-top:10px">
+        ${tile('Diferență', (diff > 0 ? '+' : diff < 0 ? '−' : '') + money(Math.abs(diff), cur), diff >= 0 ? 'var(--green)' : 'var(--red)')}
+        ${tile('Tranzacții', spent.length + received.length, 'var(--blue)')}
+      </div>
+      <div class="fhead">Încă în așteptare (acum)</div>
+      <div class="tiles">
+        ${tile('De plătit', totals(pairs(toPay)), 'var(--orange)')}
+        ${tile('De primit', totals(pairs(toReceive)), 'var(--purple)')}
+      </div>
+
+      <div class="segin" style="margin-top:20px">
+        <button class="${metric === 'spent' ? 'on' : ''}" data-act="money-metric" data-v="spent">↗ Cheltuit</button>
+        <button class="${metric === 'received' ? 'on' : ''}" data-act="money-metric" data-v="received">↙ Primit</button>
+      </div>
+      <div class="form chart">
+        <div class="readout"><b>${esc(cap(fMonthLong.format(sel.d)))}</b><span>${esc(money(sel.sum, cur))} · ${nItems(sel.n)}</span></div>
+        <div class="bars">${bars}</div>
+      </div>
+      <div class="ffoot">${word} pe luni, în ${esc(cur)}. Apasă pe o lună ca să vezi suma.${other.length ? ` Sumele în altă monedă (${esc(totals(pairs(other)))}) nu apar în grafic.` : ''}</div>
+
+      ${lists.length ? `<div class="fhead">${word} pe liste</div><div class="form">${lists.map(l => hbar(`${l.c.icon} ${esc(l.c.name)}`, l.sum, lmax, colorOf(l.c), nItems(l.n))).join('')}</div>` : ''}
+      ${vendors.length ? `<div class="fhead">${metric === 'spent' ? 'Cui ai plătit cel mai mult' : 'De la cine ai primit cel mai mult'}</div><div class="form">${vendors.map(([n, v]) => hbar(esc(n), v.sum, vmax, color, nItems(v.n))).join('')}</div>` : ''}
+      <div class="ffoot" style="margin-top:14px">Cheltuit = plăți achitate și comenzi marcate „Plătit”. Primit = sumele „de primit” bifate. Data folosită: scadența (la plăți) sau ziua adăugării.</div>`}
+    </div>
+  </div>`;
+}
+
 // ---------- action sheet ----------
 function openActions(title, actions) {
   ui.sheet = { type: 'actions', title, actions };
@@ -1054,7 +1196,7 @@ function renderSheet() {
   const body = el.querySelector('.panel-body');
   const scroll = body ? body.scrollTop : 0;
   const t = ui.sheet.type;
-  el.innerHTML = t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml() : actionsHtml();
+  el.innerHTML = t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml() : t === 'money' ? moneyStatsHtml() : actionsHtml();
   const nb = el.querySelector('.panel-body');
   if (nb) nb.scrollTop = scroll;
   // no slide animation on re-render
@@ -1076,10 +1218,10 @@ function toast(msg) {
 // ---------- backup ----------
 function exportData() {
   const blob = new Blob([JSON.stringify(db, null, 1)], { type: 'application/json' });
-  const name = `notez-backup-${toLocal(new Date()).slice(0, 10)}.json`;
+  const name = `mindme-backup-${toLocal(new Date()).slice(0, 10)}.json`;
   const file = new File([blob], name, { type: 'application/json' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    navigator.share({ files: [file], title: 'Backup Notez' }).catch(() => {});
+    navigator.share({ files: [file], title: 'Backup MindMe' }).catch(() => {});
     return;
   }
   const a = document.createElement('a');
@@ -1100,7 +1242,7 @@ function importData() {
       if (!Array.isArray(d.categories) || !Array.isArray(d.entries)) throw new Error('format');
       if (!confirm(`Înlocuiesc datele actuale cu backup-ul (${d.categories.length} liste, ${d.entries.length} elemente)?`)) return;
       db = d; save(); ui.catId = null; render(); toast('Backup încărcat ✓');
-    } catch (e) { alert('Fișierul nu e un backup Notez valid.'); }
+    } catch (e) { alert('Fișierul nu e un backup MindMe valid.'); }
   };
   inp.click();
 }
@@ -1119,7 +1261,12 @@ document.addEventListener('click', ev => {
     case 'toggle': { const e = entryById(id); if (e) askThenToggle(e); break; }
     case 'undo': undoDone(id); break;
     case 'stats': openStats(id); break;
-    case 'swipe-del': confirmSwipeDelete(el.dataset.kind, id); break;
+    case 'money': openMoney(); break;
+    case 'money-range': s.range = el.dataset.v; s.sel = monthKey(new Date()); renderSheet(); break;
+    case 'money-metric': s.metric = el.dataset.v; renderSheet(); break;
+    case 'money-sel': s.sel = el.dataset.k; renderSheet(); break;
+    case 'swipe-del': closeSwipe(); confirmSwipeDelete(el.dataset.kind, id); break;
+    case 'swipe-set': closeSwipe(); openCategory(id); break;
     case 'stats-range': s.range = el.dataset.v; s.sel = monthKey(new Date()); renderSheet(); break;
     case 'stats-sel': s.sel = el.dataset.k; renderSheet(); break;
     case 'set-confirm': db.settings = { ...(db.settings || {}), confirmCheck: !db.settings?.confirmCheck }; save(); render(); break;
@@ -1335,23 +1482,29 @@ function endDrag() {
 document.addEventListener('pointerup', endDrag);
 document.addEventListener('pointercancel', endDrag);
 
-// ---------- swipe right on a list / item → red "Șterge" button on the left ----------
+// ---------- swipe on a row ----------
+// right → red "Șterge" on the left; left (lists only) → "Setări" on the right.
+// A long swipe that you let go of runs the action directly (delete still asks for confirmation).
 const SWIPE_W = 92;
 let sw0 = null, openSwipeEl = null, suppressClick = false;
-function closeSwipe(except) {
-  if (openSwipeEl && openSwipeEl !== except) {
-    const c = openSwipeEl.querySelector('.swipe-content');
-    if (c) c.style.transform = '';
-    openSwipeEl.classList.remove('open');
-    openSwipeEl = null;
-  }
+function resetSwipe(wrap) {
+  const c = wrap.querySelector('.swipe-content');
+  if (c) { c.style.transition = ''; c.style.transform = ''; }
+  wrap.classList.remove('open', 'armed');
+  delete wrap.dataset.dir;
+  delete wrap.dataset.open;
 }
+function closeSwipe(except) {
+  if (openSwipeEl && openSwipeEl !== except) { resetSwipe(openSwipeEl); openSwipeEl = null; }
+}
+const isSwipeBtn = t => t.closest('.swipe-del, .swipe-set');
 document.addEventListener('pointerdown', ev => {
   if (drag || ui.sheet) return;
   const wrap = ev.target.closest('.swipe[data-swipe]');
-  if (!wrap || ev.target.closest('.swipe-del')) { if (!ev.target.closest('.swipe-del')) closeSwipe(); return; }
+  if (!wrap || isSwipeBtn(ev.target)) { if (!isSwipeBtn(ev.target)) closeSwipe(); return; }
+  const base = wrap === openSwipeEl ? (wrap.dataset.open === 'l' ? -SWIPE_W : SWIPE_W) : 0;
   sw0 = { wrap, content: wrap.querySelector('.swipe-content'), x: ev.clientX, y: ev.clientY,
-          base: wrap === openSwipeEl ? SWIPE_W : 0, active: false, id: ev.pointerId, now: 0 };
+          base, active: false, id: ev.pointerId, now: base, canLeft: !!wrap.querySelector('.swipe-set') };
 });
 document.addEventListener('pointermove', ev => {
   if (!sw0 || ev.pointerId !== sw0.id) return;
@@ -1361,12 +1514,20 @@ document.addEventListener('pointermove', ev => {
       sw0.active = true;
       closeSwipe(sw0.wrap);
       sw0.content.style.transition = 'none';
+      sw0.width = sw0.content.getBoundingClientRect().width;
       document.activeElement?.blur?.();
     } else if (Math.abs(dy) > 10) { sw0 = null; return; } else return;
   }
-  const x = Math.max(0, Math.min(SWIPE_W * 1.35, sw0.base + dx));
+  const w = sw0.width;
+  const x = Math.max(sw0.canLeft ? -w : 0, Math.min(w, sw0.base + dx));
   sw0.now = x;
   sw0.content.style.transform = `translateX(${x}px)`;
+  sw0.wrap.dataset.dir = x > 0 ? 'r' : x < 0 ? 'l' : '';
+  const armed = Math.abs(x) > w * 0.5;
+  if (armed !== sw0.wrap.classList.contains('armed')) {
+    sw0.wrap.classList.toggle('armed', armed);
+    try { navigator.vibrate?.(8); } catch (e) { /* ignore */ }
+  }
 });
 function endSwipe() {
   if (!sw0) return;
@@ -1375,18 +1536,39 @@ function endSwipe() {
   if (!s.active) return;
   suppressClick = true;
   setTimeout(() => { suppressClick = false; }, 350);
-  const open = s.now > SWIPE_W * 0.5;
+  const w = s.width || 300;
+  const id = s.wrap.dataset.id, kind = s.wrap.dataset.swipe;
+  if (s.now > w * 0.5) {            // long swipe right → delete (with confirmation)
+    resetSwipe(s.wrap); openSwipeEl = null;
+    confirmSwipeDelete(kind, id);
+    return;
+  }
+  if (s.now < -w * 0.5) {           // long swipe left → settings
+    resetSwipe(s.wrap); openSwipeEl = null;
+    openCategory(id);
+    return;
+  }
   s.content.style.transition = '';
-  s.content.style.transform = open ? `translateX(${SWIPE_W}px)` : '';
-  s.wrap.classList.toggle('open', open);
-  openSwipeEl = open ? s.wrap : null;
+  s.wrap.classList.remove('armed');
+  if (s.now > SWIPE_W * 0.5) {
+    s.content.style.transform = `translateX(${SWIPE_W}px)`;
+    s.wrap.classList.add('open'); s.wrap.dataset.open = 'r'; s.wrap.dataset.dir = 'r';
+    openSwipeEl = s.wrap;
+  } else if (s.now < -SWIPE_W * 0.5) {
+    s.content.style.transform = `translateX(${-SWIPE_W}px)`;
+    s.wrap.classList.add('open'); s.wrap.dataset.open = 'l'; s.wrap.dataset.dir = 'l';
+    openSwipeEl = s.wrap;
+  } else {
+    resetSwipe(s.wrap);
+    openSwipeEl = null;
+  }
 }
 document.addEventListener('pointerup', endSwipe);
 document.addEventListener('pointercancel', endSwipe);
 // a tap on an open row just closes it
 document.addEventListener('click', ev => {
   if (suppressClick) { ev.stopImmediatePropagation(); ev.preventDefault(); return; }
-  if (openSwipeEl && !ev.target.closest('.swipe-del')) {
+  if (openSwipeEl && !isSwipeBtn(ev.target)) {
     const inside = openSwipeEl.contains(ev.target);
     closeSwipe();
     if (inside) { ev.stopImmediatePropagation(); ev.preventDefault(); }

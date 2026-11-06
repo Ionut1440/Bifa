@@ -1,6 +1,6 @@
 {
-  "name": "Notez",
-  "short_name": "Notez",
+  "name": "MindMe",
+  "short_name": "MindMe",
   "description": "Notițe, comenzi, plăți și remindere – bifate.",
   "lang": "ro",
   "start_url": "./",
