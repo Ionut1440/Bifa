@@ -141,10 +141,34 @@ async function ticketText(file) {
   }
   if ((file.type || '').startsWith('image/')) {
     await loadScript(LIB_OCR);
-    const r = await window.Tesseract.recognize(file, 'eng');
+    const img = await ocrPrep(file).catch(() => file);
+    // Romanian + English, so "Bușteni", "Plecare", "Sosire" are read correctly
+    const r = await window.Tesseract.recognize(img, 'ron+eng').catch(() => window.Tesseract.recognize(img, 'eng'));
     return r?.data?.text || '';
   }
   return '';
+}
+// photos/screenshots read much better when big, gray and high-contrast
+async function ocrPrep(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const im = new Image();
+    await new Promise((res, rej) => { im.onload = res; im.onerror = rej; setTimeout(() => rej(new Error('img timeout')), 8000); im.src = url; });
+    const scale = Math.max(1, Math.min(3, 2400 / (im.naturalWidth || 1)));
+    const c = document.createElement('canvas');
+    c.width = Math.round(im.naturalWidth * scale); c.height = Math.round(im.naturalHeight * scale);
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(im, 0, 0, c.width, c.height);
+    const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+    for (let i = 0; i < p.length; i += 4) {
+      const g = 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
+      const v = Math.max(0, Math.min(255, (g - 128) * 1.6 + 140));   // more contrast, slightly lighter background
+      p[i] = p[i + 1] = p[i + 2] = v;
+    }
+    x.putImageData(d, 0, 0);
+    return c;
+  } finally { URL.revokeObjectURL(url); }
 }
 const MONTHS = { ian: 1, jan: 1, feb: 2, mar: 3, apr: 4, mai: 5, may: 5, iun: 6, jun: 6, iul: 7, jul: 7, aug: 8, sep: 9, oct: 10, noi: 11, nov: 11, dec: 12 };
 function parseTicket(raw, trip) {
@@ -164,7 +188,8 @@ function parseTicket(raw, trip) {
     out.type = 'flight';
     out.title = [al?.[1], fl ? `${fl[1]} ${fl[2]}` : ''].filter(Boolean).join(' ') || 'Zbor';
   } else {
-    const tr = U.match(/\b(IRN|IR|IC|ICE|EC|EN|RJX|RJ|RE|TGV|FR)\s?(\d{2,5})\b/);
+    const tr = U.match(/\b(?:TREN|TRAIN|ZUG|TRENO)\b(?:\s*\/\s*(?:TRAIN|TREN)\b)?\s*[:#]?\s*(IRN|IR|ICE|IC|EC|EN|RJX|RJ|RE|R|TGV|FR|RB)\s?(\d{2,5})\b/)
+      || U.match(/\b(IRN|IR|IC|ICE|EC|EN|RJX|RJ|RE|TGV|FR)\s?(\d{2,5})\b/) || U.match(/\b(R)\s?(\d{3,5})\b/);
     if (trainWords) {
       out.type = 'train';
       const brand = U.includes('FRECCIAROSSA') ? 'Frecciarossa ' : U.includes('ITALO') ? 'Italo ' : '';
@@ -188,9 +213,13 @@ function parseTicket(raw, trip) {
   const codes = [...U.matchAll(/\(([A-Z]{3})\)/g)].map(m => m[1]);
   if (r1 && !['THE', 'AND', 'FOR'].includes(r1[1])) { out.from = r1[1]; out.to = r1[2]; }
   else if (codes.length >= 2) { out.from = codes[0]; out.to = codes[1]; }
-  if (!out.from && (out.type === 'train' || out.type === 'bus')) {   // "Roma Termini - Firenze SMN"
-    const st = T.match(/([A-ZĂÂÎȘȚ][a-zăâîșțéèüö]+(?:\s[A-ZĂÂÎȘȚ][\wăâîșțéèüö.]*)?)\s[-–→]\s([A-ZĂÂÎȘȚ][a-zăâîșțéèüö]+(?:\s[A-ZĂÂÎȘȚ][\wăâîșțéèüö.]*)?)/);
-    if (st) { out.from = st[1].trim(); out.to = st[2].trim(); }
+  // times (before the route, because on train tickets the stations sit between the two times)
+  const tt = ticketTimes(T);
+  if (tt.dep) out.time = tt.dep.t;
+  if (tt.arr) out.endTime = tt.arr.t;
+  if (!out.from && (out.type === 'train' || out.type === 'bus')) {
+    const st = ticketStations(T, tt);
+    if (st) { out.from = st[0]; out.to = st[1]; }
   }
   if (!out.from) {
     const fw = T.match(/(?:From|De la|Plecare din|Departure|Abfahrt|Partenza|Din)\s*[:\-]?\s*([A-ZĂÂÎȘȚ][A-Za-zăâîșțéèüöß .'-]{2,28}?)\s+(?:To|Spre|Către|Catre|La|Sosire|Arrival|Ankunft|Arrivo|Nach|A)\s*[:\-]?\s*([A-ZĂÂÎȘȚ][A-Za-zăâîșțéèüöß .'-]{2,28}?)(?=\s|$)/);
@@ -198,16 +227,13 @@ function parseTicket(raw, trip) {
   }
   // booking code, seat, gate, coach
   const refs = [];
-  const ref = T.match(/(?:PNR|Booking (?:reference|ref\.?|code|number)|Reservation (?:code|number)|Confirmation (?:code|number)|Cod(?:ul)? (?:de )?rezervare|Rezervare|Buchungsnummer|Codice prenotazione)\s*[:#]?\s*([A-Z0-9]{5,10})\b/i);
+  const ref = T.match(/(?:PNR|Booking (?:reference|ref\.?|code|number)|Reservation (?:code|number)|Confirmation (?:code|number)|Cod(?:ul)? (?:de )?rezervare|Rezervare|Buchungsnummer|Codice prenotazione|Ticket (?:id|no\.?|number)|Bilet (?:nr\.?|id))\s*[:#]?\s*([A-Z0-9]{5,12})\b/i);
   if (ref) refs.push(ref[1].toUpperCase());
-  const coach = T.match(/\b(?:Coach|Vagon(?:ul)?|Wagen|Carrozza)\s*[:#]?\s*(\d{1,3})\b/i); if (coach) refs.push('vagon ' + coach[1]);
-  const seat = T.match(/\b(?:Seat|Loc(?:ul)?|Sitz(?:platz)?|Posto)\s*[:#]?\s*(\d{1,3}[A-K]?)\b/i); if (seat) refs.push('loc ' + seat[1]);
+  const coach = T.match(/\b(?:Coach|Vagon(?:ul)?|Wagen|Carrozza)(?:\s*\/\s*(?:Car|Coach|Wagon|Vagon))?\s*[:#]?\s*(\d{1,3})\b/i); if (coach) refs.push('vagon ' + coach[1]);
+  const seat = T.match(/\b(?:Seats?|Places?|Locuri|Loc(?:ul)?|Sitz(?:platz)?|Posti|Posto)(?:\s*\/\s*(?:Places?|Seats?|Locuri))?\s*[:#]?\s*(\d{1,3}[A-K]?(?:\s*,\s*\d{1,3}[A-K]?)*)/i);
+  if (seat) refs.push((/,/.test(seat[1]) ? 'locuri ' : 'loc ') + seat[1].replace(/\s*,\s*/g, ', '));
   const gate = T.match(/\b(?:Gate|Poarta|Poartă)\s*[:#]?\s*([A-Z]?\d{1,3}[A-Z]?)\b/i); if (gate) refs.push('poarta ' + gate[1]);
   if (refs.length) out.ref = refs.join(' · ');
-  // times: first = departure, second = arrival
-  const times = [...T.matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)].map(m => `${m[1].padStart(2, '0')}:${m[2]}`);
-  if (times[0]) out.time = times[0];
-  if (times[1] && times[1] !== times[0]) out.endTime = times[1];
   // date → the matching day of the trip
   const dates = [];
   for (const m of T.matchAll(/\b(\d{1,2})[./-](\d{1,2})[./-](20\d{2})\b/g)) dates.push([+m[3], +m[2], +m[1]]);
@@ -226,6 +252,76 @@ function parseTicket(raw, trip) {
     out.currency = ({ '€': 'EUR', LEI: 'RON', '$': 'USD', '£': 'GBP' })[cur.toUpperCase()] || cur.toUpperCase();
   }
   return out;
+}
+// departure / arrival times. Purchase and boarding times are ignored. A time right after "Plecare/Departure" or
+// "Sosire/Arrival" wins; otherwise, on a one-day ticket the earlier time is the departure (tables are read in odd orders).
+const DEP_LBL = /(?:PLECARE|DEPARTURE|ABFAHRT|PARTENZA|DEPART|SALIDA|CHECK.?IN)\b/;
+const ARR_LBL = /(?:SOSIRE|ARRIVAL|ANKUNFT|ARRIVO|ARRIVEE|LLEGADA|CHECK.?OUT)\b/;
+function ticketTimes(T) {
+  const U = normText(T).toUpperCase();
+  const all = [...U.matchAll(/(?<![\dA-Z.,:])([01]?\d|2[0-3])[:H.]([0-5]\d)(?![\d.,:])(?!\s?(?:EUR|RON|LEI|USD|GBP|CHF|%|€|\$|KG))/g)]
+    .map(m => ({ t: `${m[1].padStart(2, '0')}:${m[2]}`, i: m.index }))
+    .filter(x => !/(BOARDING|IMBARCARE|GATE CLOSES|CUMPARARI|CUMPARAT|BUY DATE|PURCHASE|ISSUED|EMIS|EMITERE|PRINTED|TIPARIT)[^0-9]{0,25}[\d .\/A-Z]{0,20}$/.test(U.slice(Math.max(0, x.i - 45), x.i)));
+  if (!all.length) return {};
+  const after = re => {
+    const m = U.match(re);
+    if (!m) return null;
+    const end = m.index + m[0].length;
+    return all.find(x => x.i >= end && x.i - end <= 30) || null;
+  };
+  let dep = after(DEP_LBL), arr = after(ARR_LBL);
+  if (dep && arr && dep.t !== arr.t && (dep.t < arr.t || distinctDates(U) > 1 || /CHECK.?IN/.test(U))) return { dep, arr };
+  const uniq = [];
+  for (const x of all) if (!uniq.some(u => u.t === x.t)) uniq.push(x);
+  const two = uniq.slice(0, 2);
+  if (two.length === 2 && distinctDates(U) <= 1) two.sort((a, b) => a.t.localeCompare(b.t));
+  return { dep: two[0], arr: two[1] };
+}
+function distinctDates(U) {
+  const s = new Set();
+  for (const m of U.matchAll(/\b(\d{1,2})[./-](\d{1,2})[./-](20\d{2})\b/g)) s.add(`${+m[1]}.${+m[2]}`);
+  for (const m of U.matchAll(/\b(\d{1,2})\s?(IAN|JAN|FEB|MAR|APR|MAI|MAY|IUN|JUN|IUL|JUL|AUG|SEP|OCT|NOI|NOV|DEC)[A-Z]*\.?\s?(20\d{2})/g)) s.add(`${+m[1]}.${m[2]}`);
+  return s.size;
+}
+// stations on a train / bus ticket: "Roma Termini → Firenze SMN", or (CFR-style tables) the words between
+// the departure and the arrival time: "17:10 Bușteni Sinaia 17:19"
+function ticketStations(T, tt) {
+  const L = '[A-ZĂÂÎȘȚŞŢÉÈÜÖ]', W = `${L}[\\p{L}.'’-]+`;
+  const clean = T.replace(/(?:Plecare|Departure|Sosire|Arrival|Abfahrt|Ankunft|Partenza|Arrivo|Départ|Arrivée|Salida|Llegada)(?:\s*\/\s*(?:Plecare|Departure|Sosire|Arrival))?/gi, ' ')
+    .replace(/\b(?:FlixBus|Flix|Trenitalia|Frecciarossa|Frecciargento|Italo|SNCF|TGV|ÖBB|OBB|DB|Deutsche Bahn|CFR Călători|CFR Calatori|CFR|Regio Călători|Astra Trans Carpatic|Softrans|Interregional|Renfe|Eurostar)\b/gi, ' ')
+    .replace(/[|()[\]{}]/g, ' ').replace(/\s+/g, ' ');
+  const isBad = s => /^(Oct|Nov|Dec|Ian|Jan|Feb|Mar|Apr|Mai|May|Iun|Jun|Iul|Jul|Aug|Sep|Noi|Tren|Train|Trains|Trenuri|Bilet|Ticket|Data|Date|Clasa|Class)$/i.test(s);
+  // 1) between the two times
+  const findT = t => { const m = clean.match(new RegExp(`(?<![\\d.,:])0?${+t.slice(0, 2)}[:h.]${t.slice(3)}(?![\\d.,:])`)); return m ? m.index : -1; };
+  if (tt?.dep && tt?.arr) {
+    const a = findT(tt.dep.t), b = findT(tt.arr.t);
+    const rev = b < a;                          // arrival written first → the stations are written backwards too
+    const [i, j] = rev ? [b, a] : [a, b];
+    const fix = p => rev ? [p[1], p[0]] : p;
+    if (i >= 0 && j > i && j - i < 90) {
+      const seg = clean.slice(i + 5, j).replace(/\d{1,2}\s?[A-Za-z]{3}\.?\s?20\d{2}|\d{1,2}[./-]\d{1,2}[./-]20\d{2}/g, ' ').trim();
+      const parts = seg.split(/\s*[→>–]\s*|\s+-\s+/).map(s => s.trim()).filter(Boolean);
+      if (parts.length === 2 && parts.every(p => new RegExp(`^${W}(?:\\s${W}){0,2}$`, 'u').test(p))) return fix(parts);
+      const words = seg.split(' ').filter(w => new RegExp(`^${W}$`, 'u').test(w) && !isBad(w));
+      const groups = [];
+      for (const w of words) {
+        if (groups.length && /^(Nord|Sud|Est|Vest|Gara|Centrală|Centrala|Central|Centrale|Termini|Hbf|Hauptbahnhof|Bahnhof|Station|Est|Ovest|Mare|Mic|Mică|Bai|Băi|Vechi)$/i.test(w)) groups[groups.length - 1] += ' ' + w;
+        else groups.push(w);
+      }
+      if (groups.length === 2) return fix(groups);
+    }
+    // 3) each station right after its own time: "22:30 București Nord … 06:10 Cluj Napoca"
+    const nameAfter = i => {
+      const m = clean.slice(i).match(new RegExp(`^\\S+\\s+(${W}(?:\\s${W}){0,2})`, 'u'));
+      return m && !isBad(m[1].split(' ')[0]) ? m[1].trim() : '';
+    };
+    if (a >= 0 && b >= 0) { const f = nameAfter(a), t = nameAfter(b); if (f && t && f !== t) return [f, t]; }
+  }
+  // 2) "A → B" / "A - B" anywhere
+  const NM = `${W}(?:\\s(?:(?:de|di|del|della|du|la|le|sur|am|an|der|im|pe)\\s)?${W}){0,3}`;   // "Paris Gare de Lyon"
+  const st = clean.match(new RegExp(`(${NM})\\s?[→>–-]\\s?(${NM})`, 'u'));
+  if (st && !isBad(st[1]) && !isBad(st[2])) return [st[1].trim(), st[2].trim()];
+  return null;
 }
 // fill only the empty fields of the draft; returns the list of what was filled
 function applyTicket(d, p) {
