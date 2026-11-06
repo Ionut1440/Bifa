@@ -65,7 +65,15 @@ h1 .emo { font-size: 28px; }
 .row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; position: relative; cursor: pointer; }
 .row + .row::before { content: ""; position: absolute; top: 0; left: 50px; right: 0; border-top: .5px solid var(--line); }
 .row:active { background: var(--card2); }
-.row.done { opacity: .62; }
+.row.done > * { opacity: .62; }
+
+/* swipe right → delete */
+.swipe { position: relative; overflow: hidden; }
+.swipe-del { position: absolute; left: 0; top: 0; bottom: 0; width: 92px; background: var(--red); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 13px; font-weight: 700; }
+.swipe-del svg { width: 22px; height: 22px; }
+.swipe-content { background: var(--card); position: relative; z-index: 1; transition: transform .22s cubic-bezier(.2,.9,.3,1); touch-action: pan-y; }
+.swipe + .swipe .row::before { content: ""; position: absolute; top: 0; left: 50px; right: 0; border-top: .5px solid var(--line); }
+.swipe + .swipe .catrow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; border-top: .5px solid var(--line); }
 .check { flex: 0 0 auto; width: 26px; height: 26px; margin-top: -1px; border-radius: 50%; border: 2px solid rgba(138,138,147,.55); display: grid; place-items: center; transition: transform .15s; }
 .check svg { width: 15px; height: 15px; color: #fff; opacity: 0; }
 .check.on { background: var(--c, var(--accent)); border-color: var(--c, var(--accent)); }

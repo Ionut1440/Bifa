@@ -374,6 +374,7 @@ const ICON = {
   up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
   grip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></svg>',
   chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>',
   upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7 9l5-5 5 5M5 20h14"/></svg>',
@@ -435,7 +436,8 @@ function rowHtml(e, opts = {}) {
       <div class="subrow ${s.done ? 'on' : ''}"><button class="subcheck ${s.done ? 'on' : ''}" style="--c:${col}" data-act="sub" data-id="${e.id}" data-sid="${s.id}">${ICON.check}</button><span>${esc(s.title)}</span></div>`).join('')}
       ${subs.length > 8 ? `<div class="footnote" style="margin:0">+ încă ${subs.length - 8}</div>` : ''}</div>` : '';
 
-  return `<div class="row ${e.done ? 'done' : ''}" data-act="open" data-id="${e.id}">
+  return `<div class="swipe" data-swipe="entry" data-id="${e.id}"><button class="swipe-del" data-act="swipe-del" data-kind="entry" data-id="${e.id}">${ICON.trash}<span>Șterge</span></button>
+  <div class="row swipe-content ${e.done ? 'done' : ''}" data-act="open" data-id="${e.id}">
     <button class="check ${e.done ? 'on' : ''}" style="--c:${col}" data-act="toggle" data-id="${e.id}" aria-label="Bifează">${ICON.check}</button>
     <div class="rbody">
       <div class="rtitle">${catmark}${prio}${esc(e.title)}</div>
@@ -444,7 +446,7 @@ function rowHtml(e, opts = {}) {
       ${subsHtml}
     </div>
     ${amount}
-  </div>`;
+  </div></div>`;
 }
 
 function sectionsHtml(sections, opts) {
@@ -501,11 +503,12 @@ function screenLists() {
       : `${active.length ? `<span class="badge" style="--c:${colorOf(c)}">${active.length}</span>` : ''}
          <button class="gear" data-act="cat-rules" data-id="${c.id}" aria-label="Reguli">${ICON.gear}</button>
          <span class="chev">${ICON.chev}</span>`;
-    return `<div class="catrow" data-act="${ui.reorder ? '' : 'open-cat'}" data-id="${c.id}">
+    return `<div class="swipe" ${ui.reorder ? '' : 'data-swipe="cat"'} data-id="${c.id}"><button class="swipe-del" data-act="swipe-del" data-kind="cat" data-id="${c.id}">${ICON.trash}<span>Șterge</span></button>
+    <div class="catrow swipe-content" data-act="${ui.reorder ? '' : 'open-cat'}" data-id="${c.id}">
       <div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
       <div style="flex:1;min-width:0"><div class="catname">${esc(c.name)}</div><div class="catsub ${over ? 'red' : ''}">${sub}</div></div>
       ${right}
-    </div>`;
+    </div></div>`;
   }).join('');
   return `
     <div class="topbar"><div class="left">${brand()}</div>
@@ -608,6 +611,7 @@ function render() {
   else if (ui.tab === 'reminders') html = screenReminders();
   else html = screenToday();
   app.innerHTML = html;
+  openSwipeEl = null;
   window.scrollTo(0, y);
   renderTabbar();
 }
@@ -834,7 +838,7 @@ function openCategory(id) {
 function categorySheetHtml() {
   const { d, isNew } = ui.sheet;
   const col = colorOf(d);
-  const tg = (field, label, ico) => `<div class="field"><span class="ico">${ico || ''}</span><span class="lbl">${label}</span>${sw('c.' + field, d[field])}</div>`;
+  const tg = (field, label, ico) => `<div class="field">${ico ? `<span class="ico">${ico}</span>` : ''}<span class="lbl">${label}</span>${sw('c.' + field, d[field])}</div>`;
   const tx = (field, label, ph) => `<div class="field"><span class="lbl" style="color:var(--muted);font-size:15px">${label}</span><input type="text" class="right" data-bind="c.${field}" placeholder="${esc(ph)}" value="${esc(d[field])}"></div>`;
   const count = isNew ? 0 : db.entries.filter(e => e.cat === d.id).length;
   const days = +d.autoRemDays === 0 ? 'În ziua termenului' : +d.autoRemDays === 1 ? 'Cu o zi înainte' : `Cu ${d.autoRemDays} zile înainte`;
@@ -1115,6 +1119,7 @@ document.addEventListener('click', ev => {
     case 'toggle': { const e = entryById(id); if (e) askThenToggle(e); break; }
     case 'undo': undoDone(id); break;
     case 'stats': openStats(id); break;
+    case 'swipe-del': confirmSwipeDelete(el.dataset.kind, id); break;
     case 'stats-range': s.range = el.dataset.v; s.sel = monthKey(new Date()); renderSheet(); break;
     case 'stats-sel': s.sel = el.dataset.k; renderSheet(); break;
     case 'set-confirm': db.settings = { ...(db.settings || {}), confirmCheck: !db.settings?.confirmCheck }; save(); render(); break;
@@ -1329,6 +1334,84 @@ function endDrag() {
 }
 document.addEventListener('pointerup', endDrag);
 document.addEventListener('pointercancel', endDrag);
+
+// ---------- swipe right on a list / item → red "Șterge" button on the left ----------
+const SWIPE_W = 92;
+let sw0 = null, openSwipeEl = null, suppressClick = false;
+function closeSwipe(except) {
+  if (openSwipeEl && openSwipeEl !== except) {
+    const c = openSwipeEl.querySelector('.swipe-content');
+    if (c) c.style.transform = '';
+    openSwipeEl.classList.remove('open');
+    openSwipeEl = null;
+  }
+}
+document.addEventListener('pointerdown', ev => {
+  if (drag || ui.sheet) return;
+  const wrap = ev.target.closest('.swipe[data-swipe]');
+  if (!wrap || ev.target.closest('.swipe-del')) { if (!ev.target.closest('.swipe-del')) closeSwipe(); return; }
+  sw0 = { wrap, content: wrap.querySelector('.swipe-content'), x: ev.clientX, y: ev.clientY,
+          base: wrap === openSwipeEl ? SWIPE_W : 0, active: false, id: ev.pointerId, now: 0 };
+});
+document.addEventListener('pointermove', ev => {
+  if (!sw0 || ev.pointerId !== sw0.id) return;
+  const dx = ev.clientX - sw0.x, dy = ev.clientY - sw0.y;
+  if (!sw0.active) {
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+      sw0.active = true;
+      closeSwipe(sw0.wrap);
+      sw0.content.style.transition = 'none';
+      document.activeElement?.blur?.();
+    } else if (Math.abs(dy) > 10) { sw0 = null; return; } else return;
+  }
+  const x = Math.max(0, Math.min(SWIPE_W * 1.35, sw0.base + dx));
+  sw0.now = x;
+  sw0.content.style.transform = `translateX(${x}px)`;
+});
+function endSwipe() {
+  if (!sw0) return;
+  const s = sw0;
+  sw0 = null;
+  if (!s.active) return;
+  suppressClick = true;
+  setTimeout(() => { suppressClick = false; }, 350);
+  const open = s.now > SWIPE_W * 0.5;
+  s.content.style.transition = '';
+  s.content.style.transform = open ? `translateX(${SWIPE_W}px)` : '';
+  s.wrap.classList.toggle('open', open);
+  openSwipeEl = open ? s.wrap : null;
+}
+document.addEventListener('pointerup', endSwipe);
+document.addEventListener('pointercancel', endSwipe);
+// a tap on an open row just closes it
+document.addEventListener('click', ev => {
+  if (suppressClick) { ev.stopImmediatePropagation(); ev.preventDefault(); return; }
+  if (openSwipeEl && !ev.target.closest('.swipe-del')) {
+    const inside = openSwipeEl.contains(ev.target);
+    closeSwipe();
+    if (inside) { ev.stopImmediatePropagation(); ev.preventDefault(); }
+  }
+}, true);
+function confirmSwipeDelete(kind, id) {
+  if (kind === 'cat') {
+    const c = catById(id);
+    if (!c) return;
+    const n = db.entries.filter(e => e.cat === id).length;
+    openActions(`Ștergi lista „${c.name}”${n ? ` și cele ${n} elemente din ea` : ''}? Nu se poate anula.`, [
+      { label: '🗑 Șterge lista', danger: true, run: () => {
+        db.entries = db.entries.filter(e => e.cat !== id);
+        db.categories = db.categories.filter(x => x.id !== id);
+        save(); render(); toast('Lista a fost ștearsă');
+      } },
+    ]);
+  } else {
+    const e = entryById(id);
+    if (!e) return;
+    openActions(`Ștergi „${e.title}”? Nu se poate anula.`, [
+      { label: '🗑 Șterge', danger: true, run: () => { deleteEntry(id); render(); toast('Șters'); } },
+    ]);
+  }
+}
 
 // ---------- iPhone: close the keyboard when you start scrolling ----------
 // (otherwise the blinking text cursor drifts while the panel scrolls)
