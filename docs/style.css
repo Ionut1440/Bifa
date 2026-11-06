@@ -49,9 +49,10 @@ input, select, textarea { font: inherit; color: var(--text); }
 /* the page itself never scrolls: only this area between the fixed header and the bottom bar does,
    and it stops exactly at the bar (no rubber-band past the ends) */
 :root { --barspace: calc(var(--safe-b) + 84px); --toppad: calc(var(--safe-t) + 18px); }
-#app { position: fixed; top: 0; left: 0; right: 0; bottom: var(--barspace); max-width: 680px; margin: 0 auto;
+#app { position: fixed; top: 0; left: 0; right: 0; bottom: 0; max-width: 680px; margin: 0 auto;
   overflow-y: auto; overflow-x: hidden; overscroll-behavior: none; -webkit-overflow-scrolling: touch;
-  padding: 0 16px 24px; }
+  /* content scrolls under the glass bar like before; the empty space at the end lets the last item stop above it */
+  padding: 0 16px calc(var(--tabh) + var(--safe-b) + 44px); }
 /* fixed header: title row + search bar (main screens) or the "‹ Liste" row (inside a list);
    a little lower than before so the text stays clear of the status bar; dragging on it doesn't scroll */
 .mainhead, #app > .topbar:first-child { position: sticky; top: 0; z-index: 6; background: var(--bg);
