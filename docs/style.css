@@ -455,6 +455,36 @@ a.linkrow { text-decoration: none; }
 .cal-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 14px; color: var(--muted); font-weight: 600; }
 .cal-foot button { color: var(--red); font-weight: 600; font-size: 14px; }
 
+/* missed doses card */
+.missedcard { background: color-mix(in srgb, var(--red) 9%, var(--card)); border: 1px solid color-mix(in srgb, var(--red) 25%, transparent); border-radius: 16px; padding: 14px; margin: 6px 0 4px; animation: slIn .3s both; }
+.mc-head { font-weight: 800; font-size: 16px; color: var(--red); }
+.missedcard .mc-sub { font-size: 13px; color: var(--muted); margin: 3px 0 8px; }
+.mrow { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-top: .5px solid var(--line); }
+.mrow-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mrow-t b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow-t span { font-size: 12px; color: var(--muted); }
+.mbtn { font-size: 13px; font-weight: 700; padding: 7px 10px; border-radius: 10px; background: var(--card2); color: var(--text); white-space: nowrap; transition: transform .12s; }
+.mbtn.ok { background: var(--green); color: #fff; }
+.mbtn:active { transform: scale(.93); }
+.mc-all { display: block; margin: 8px auto 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+/* medicine history calendar */
+.mh-grid button.mh-ok { background: color-mix(in srgb, var(--green) 85%, transparent); color: #fff; }
+.mh-grid button.mh-part { background: color-mix(in srgb, var(--orange) 80%, transparent); color: #fff; }
+.mh-grid button.mh-bad { background: color-mix(in srgb, var(--red) 80%, transparent); color: #fff; }
+.mh-grid button.mh-skip { background: rgba(118,118,128,.35); color: #fff; }
+.mh-grid button.sel { box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--text); }
+.mh-legend { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 10px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.mh-legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 5px; margin-right: 4px; vertical-align: -1px; }
+.mh-legend .ok::before { background: var(--green); } .mh-legend .part::before { background: var(--orange); }
+.mh-legend .bad::before { background: var(--red); } .mh-legend .skip::before { background: rgba(118,118,128,.5); }
+.mh-detail { margin-top: 12px; padding-top: 10px; border-top: .5px solid var(--line); animation: slIn .25s both; }
+.mh-dtitle { font-weight: 700; margin-bottom: 6px; }
+.mh-dose { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.mh-dose b { width: 46px; font-variant-numeric: tabular-nums; }
+.mh-seg { flex: 1; display: flex; background: rgba(118,118,128,.14); border-radius: 9px; padding: 2px; }
+.mh-seg button { flex: 1; padding: 6px 2px; font-size: 13px; font-weight: 600; border-radius: 7px; }
+.mh-seg button.on { background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
 /* medicines */
 .medico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 19px; flex: 0 0 auto; background: color-mix(in srgb, var(--c) 18%, transparent); }
 .dtime { font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; margin-top: 2px; }

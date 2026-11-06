@@ -741,6 +741,7 @@ function screenToday() {
       ${tile('7 zile', wk.length, 'var(--blue)')}
     </div>
     ${!ov.length && !td.length && !wk.length && !dosesOn(new Date()).length ? `<div class="empty"><div class="big">☀️</div><b>Ziua e liberă</b>Nimic întârziat sau programat în zilele următoare.</div>` : ''}
+    ${missedDosesHtml()}
     ${typeof tripTodayHtml === 'function' ? tripTodayHtml() : ''}
     ${medsTodayHtml()}
     ${sec('Întârziate', ov, 'red')}
@@ -1037,7 +1038,8 @@ const TABS = [['today', 'Azi', 'sun'], ['lists', 'Liste', 'grid'], ['reminders',
 function renderTabbar() {
   const bar = document.getElementById('tabbar');
   const badge = db.entries.filter(e => !e.done && !e.med && catById(e.cat) && (isOverdue(e) || isDueToday(e) || reminderMissed(e))).length
-    + dosesOn(new Date()).filter(x => doseLate(x, new Date())).length;
+    + dosesOn(new Date()).filter(x => doseLate(x, new Date())).length
+    + missedDoses().length;
   if (!bar.querySelector('.pill')) {
     bar.innerHTML = `<span class="pill"></span>` + TABS.map(([id, label, icon]) =>
       `<button data-tab="${id}">${ICON[icon]}<span>${label}</span><span class="tbadge hidden"></span></button>`).join('');
@@ -1944,6 +1946,107 @@ function toggleDose(eid, t) {
   if (i >= 0) arr.splice(i, 1); else arr.push(t);
   save();
 }
+// ---------- missed doses: what you didn't check in the past days ----------
+function doseState(e, day, t) {
+  const k = dkey(day);
+  if ((e.med.taken?.[k] || []).includes(t)) return 'taken';
+  if ((e.med.skipped?.[k] || []).includes(t)) return 'skipped';
+  return 'missed';
+}
+// set one dose of one day: 'taken' | 'skipped' | 'missed' (= not checked)
+function setDose(eid, k, t, state) {
+  const e = entryById(eid);
+  if (!e?.med) return;
+  const m = e.med;
+  m.taken ||= {}; m.skipped ||= {};
+  for (const o of [m.taken, m.skipped]) if (o[k]) { o[k] = o[k].filter(x => x !== t); if (!o[k].length) delete o[k]; }
+  if (state === 'taken') (m.taken[k] ||= []).push(t);
+  if (state === 'skipped') (m.skipped[k] ||= []).push(t);
+  save();
+}
+// doses of the last `back` days (not today) that are neither taken nor skipped
+function missedDoses(back = 7) {
+  const today = startOfDay(new Date());
+  const out = [];
+  for (const e of db.entries) {
+    if (!e.med || !isMedCat(catById(e.cat)) || e.done) continue;
+    const added = startOfDay(new Date(e.createdAt || 0));
+    for (let i = 1; i <= back; i++) {
+      const day = addDays(today, -i);
+      if (day < added || !medOnDay(e, day)) continue;
+      for (const t of e.med.times) if (doseState(e, day, t) === 'missed') out.push({ e, day, t });
+    }
+  }
+  return out.sort((a, b) => b.day - a.day || a.t.localeCompare(b.t));
+}
+function missedDosesHtml() {
+  const list = missedDoses();
+  if (!list.length) return '';
+  const n = list.length;
+  return `<div class="missedcard">
+    <div class="mc-head">⚠️ ${n === 1 ? 'Ai uitat o doză' : `Ai uitat ${n} doze`}</div>
+    <div class="mc-sub">Le-ai luat și n-ai bifat? Apasă „Am luat-o”. Dacă nu, „Am sărit-o”.</div>
+    ${list.slice(0, 10).map(x => `<div class="mrow">
+      <div class="mrow-t"><b>💊 ${esc(x.e.title)}</b><span>${esc(fmtDay(x.day))} · ${esc(x.t)}${x.e.med.dose ? ' · ' + esc(x.e.med.dose) : ''}</span></div>
+      <button class="mbtn ok" data-act="dose-set" data-id="${x.e.id}" data-k="${dkey(x.day)}" data-t="${x.t}" data-s="taken">Am luat-o</button>
+      <button class="mbtn" data-act="dose-set" data-id="${x.e.id}" data-k="${dkey(x.day)}" data-t="${x.t}" data-s="skipped">Am sărit-o</button></div>`).join('')}
+    ${n > 10 ? `<div class="mc-sub" style="margin-top:6px">+ încă ${n - 10}</div>` : ''}
+    ${n > 1 ? `<button class="mc-all" data-act="dose-skipall">Le-am sărit pe toate</button>` : ''}
+  </div>`;
+}
+
+// history of one medicine: a month calendar coloured by how the day went; tap a day to fix its doses
+function medDayStatus(e, day) {
+  if (!medOnDay(e, day)) return 'off';
+  const today = startOfDay(new Date());
+  if (day > today) return 'future';
+  const states = e.med.times.map(t => doseState(e, day, t));
+  const now = new Date();
+  // today: doses whose time hasn't come yet don't count as missed
+  const due = sameDay(day, today) ? e.med.times.filter(t => { const [h, m] = t.split(':').map(Number); return atTime(day, h, m) <= now; }) : e.med.times;
+  if (!due.length) return 'future';
+  if (states.every(s => s === 'taken')) return 'ok';
+  if (states.every(s => s === 'skipped')) return 'skip';
+  if (states.some(s => s === 'taken')) return 'part';
+  return sameDay(day, today) ? 'part' : 'bad';
+}
+function medHistoryHtml(e) {
+  const s = ui.sheet;
+  const [y, m] = (s.histMonth || dkey(new Date()).slice(0, 7)).split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const offset = (first.getDay() + 6) % 7;
+  const daysIn = new Date(y, m, 0).getDate();
+  const today = startOfDay(new Date());
+  let cells = '';
+  for (let i = 0; i < offset; i++) cells += '<span></span>';
+  for (let dd = 1; dd <= daysIn; dd++) {
+    const day = new Date(y, m - 1, dd);
+    const st = medDayStatus(e, day);
+    const k = dkey(day);
+    cells += `<button class="mh-${st} ${s.histDay === k ? 'sel' : ''} ${sameDay(day, today) ? 'today' : ''}" ${st === 'off' || st === 'future' ? 'disabled' : `data-act="mh-day" data-v="${k}"`}>${dd}</button>`;
+  }
+  let detail = '';
+  if (s.histDay) {
+    const day = dayOf(s.histDay);
+    detail = `<div class="mh-detail"><div class="mh-dtitle">${esc(cap(fLong.format(day)))}</div>
+      ${e.med.times.map(t => {
+        const st = doseState(e, day, t);
+        const b = (state, label) => `<button class="${st === state ? 'on' : ''}" data-act="dose-set" data-id="${e.id}" data-k="${s.histDay}" data-t="${t}" data-s="${state}">${label}</button>`;
+        return `<div class="mh-dose"><b>${t}</b><div class="mh-seg">${b('taken', '✓ Luată')}${b('skipped', 'Sărită')}${b('missed', 'Neluată')}</div></div>`;
+      }).join('')}</div>`;
+  }
+  const title = cap(new Intl.DateTimeFormat('ro-RO', { month: 'long', year: 'numeric' }).format(first));
+  return `<div class="fhead">Istoric</div>
+    <div class="form"><div class="fieldcol"><div class="calpick">
+      <div class="cal-head"><button data-act="mh-nav" data-v="-1">${ICON.back}</button><b>${esc(title)}</b><button data-act="mh-nav" data-v="1"><span style="display:inline-block;transform:scaleX(-1)">${ICON.back}</span></button></div>
+      <div class="cal-grid cal-wd">${['L', 'Ma', 'Mi', 'J', 'V', 'S', 'D'].map(w => `<span>${w}</span>`).join('')}</div>
+      <div class="cal-grid mh-grid">${cells}</div>
+      <div class="mh-legend"><span class="ok">luat tot</span><span class="part">parțial</span><span class="bad">uitat</span><span class="skip">sărit</span></div>
+      ${detail}
+    </div></div></div>
+    <div class="ffoot">Apasă pe o zi ca să vezi și să corectezi dozele ei.</div>`;
+}
+
 function medAdherence(e) {
   let sched = 0, taken = 0;
   const today = startOfDay(new Date()), now = new Date();
@@ -2011,6 +2114,7 @@ function screenMeds(c) {
     <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
       <div class="right"><button class="iconbtn fill" style="background:${col}" data-act="new" data-id="${c.id}">${ICON.plus}</button></div></div>
     <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    ${missedDosesHtml()}
     ${doses.length ? `
       <div class="medtoday" style="--c:${col}">
         <div><div class="mt-l">Azi</div><div class="mt-v">${takenN} din ${doses.length} luate</div></div>
@@ -2106,6 +2210,7 @@ function medSheetHtml() {
       </div>
       <div class="ffoot">${d.alarm ? 'La salvare se deschide Calendarul o singură dată, pentru toate orele: apeși „Adaugă”. Alarmele se opresc singure la finalul tratamentului.' : 'Fără alarme: vezi dozele doar în aplicație.'}</div>
 
+      ${!isNew && entryById(d.id) ? medHistoryHtml(entryById(d.id)) : ''}
       ${!isNew ? `<div class="form" style="margin-top:24px"><div class="field"><span class="ico">⏹</span><span class="lbl">Oprit (nu-l mai iau)</span>${sw('m.done', d.done)}</div></div>
         <button class="btn red block mt" data-act="med-delete">Șterge medicamentul</button>` : ''}
     </div>
@@ -2580,6 +2685,25 @@ document.addEventListener('click', ev => {
     // medicines
     case 'dose': toggleDose(id, el.dataset.t); try { navigator.vibrate?.(10); } catch (e) { /* ignore */ } render(); refreshSearch(); break;
     case 'med-save': saveMed(); break;
+    case 'dose-set':
+      setDose(id, el.dataset.k, el.dataset.t, el.dataset.s);
+      try { navigator.vibrate?.(8); } catch (err) { /* ignore */ }
+      toast(el.dataset.s === 'taken' ? 'Bifat ca luată ✓' : el.dataset.s === 'skipped' ? 'Marcat ca sărită' : 'Debifat');
+      if (s?.type === 'med') renderSheet(); else render();
+      break;
+    case 'dose-skipall': {
+      const list = missedDoses();
+      openActions(`Marchezi ca sărite toate cele ${list.length} doze uitate?`, [{ label: 'Le-am sărit pe toate', run: () => {
+        list.forEach(x => setDose(x.e.id, dkey(x.day), x.t, 'skipped')); render(); toast('Gata');
+      } }]);
+      break;
+    }
+    case 'mh-day': s.histDay = el.dataset.v; renderSheet(); break;
+    case 'mh-nav': {
+      const [y, m] = (s.histMonth || dkey(new Date()).slice(0, 7)).split('-').map(Number);
+      const nd = new Date(y, m - 1 + +el.dataset.v, 1);
+      s.histMonth = `${nd.getFullYear()}-${pad(nd.getMonth() + 1)}`; renderSheet(); break;
+    }
     case 'med-delete': {
       const name = s.d.title || 'medicamentul';
       openActions(`Ștergi „${name}” și tot istoricul dozelor? Nu se poate anula.`, [
