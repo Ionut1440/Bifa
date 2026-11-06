@@ -780,7 +780,6 @@ function screenLists() {
     const right = ui.reorder
       ? `<div class="order-btns"><button data-act="cat-up" data-id="${c.id}" ${i === 0 ? 'disabled style="opacity:.3"' : ''}>${ICON.up}</button><button data-act="cat-down" data-id="${c.id}" ${i === arr.length - 1 ? 'disabled style="opacity:.3"' : ''}>${ICON.down}</button></div>`
       : `${active.length ? `<span class="badge" style="--c:${colorOf(c)}">${active.length}</span>` : ''}
-         <button class="gear" data-act="cat-rules" data-id="${c.id}" aria-label="Reguli">${ICON.gear}</button>
          <span class="chev">${ICON.chev}</span>`;
     return `<div class="swipe" ${ui.reorder ? '' : 'data-swipe="cat"'} data-id="${c.id}"><button class="swipe-del" data-act="swipe-del" data-kind="cat" data-id="${c.id}">${ICON.trash}<span>Șterge</span></button>
     <button class="swipe-set" data-act="swipe-set" data-id="${c.id}">${ICON.gear}<span>Setări</span></button>
