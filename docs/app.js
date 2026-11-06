@@ -1119,8 +1119,37 @@ document.addEventListener('pointerdown', ev => {
   bar.classList.remove('compact');
   placePill(tabDrag.over, ev.clientX);
   markOver(tabDrag.over);
-  magnify([...bar.querySelectorAll('button[data-tab]')], ev.clientX, 1.16, 1.2);
+  lensMove(ev.clientX, true);
 });
+// ---------- liquid-glass lens (like iOS 26 / WhatsApp): while you drag along the bottom bar, a clear lens
+// follows the finger and magnifies the icons under it, with bright rim and rainbow edges ----------
+function lensMove(x, start) {
+  const bar = document.getElementById('tabbar');
+  let L = document.getElementById('lens');
+  if (!L) {
+    L = document.createElement('div'); L.id = 'lens';
+    L.innerHTML = '<div class="lensrow"></div><i class="lensrim"></i><i class="lensshine"></i>';
+    document.body.appendChild(L);
+  }
+  const btns = [...bar.querySelectorAll('button[data-tab]')];
+  const row = L.querySelector('.lensrow');
+  row.innerHTML = btns.map(b => b.outerHTML).join('');
+  row.querySelectorAll('button').forEach(b => { b.style.transform = ''; b.removeAttribute('data-tab'); });
+  const br = bar.getBoundingClientRect();
+  const bw = br.width / btns.length;
+  const w = bw + 34, h = br.height + 12;
+  const cx = Math.max(br.left + w / 2 - 6, Math.min(br.right - w / 2 + 6, x));
+  const left = cx - w / 2, top = br.top + br.height / 2 - h / 2;
+  Object.assign(L.style, { left: left + 'px', top: top + 'px', width: w + 'px', height: h + 'px' });
+  Object.assign(row.style, { left: (br.left - left) + 'px', top: (br.top - top) + 'px', width: br.width + 'px', height: br.height + 'px',
+    transformOrigin: `${cx - br.left}px 50%` });
+  if (start) { L.classList.remove('off'); void L.offsetWidth; L.classList.add('on'); bar.classList.add('lensing'); }
+}
+function lensHide() {
+  const L = document.getElementById('lens');
+  document.getElementById('tabbar')?.classList.remove('lensing');
+  if (L) L.classList.remove('on');
+}
 function markOver(btn) {
   document.querySelectorAll('#tabbar button[data-tab]').forEach(b => b.classList.toggle('over', b === btn));
 }
@@ -1157,8 +1186,7 @@ document.addEventListener('pointermove', ev => {
   if (over !== tabDrag.over) { tabDrag.over = over; try { navigator.vibrate?.(6); } catch (e) { /* ignore */ } }
   markOver(over);
   placePill(over, ev.clientX);
-  stretchPill(document.querySelector('#tabbar .pill'), tabDrag, ev.clientX);
-  magnify([...document.querySelectorAll('#tabbar button[data-tab]')], ev.clientX, 1.16, 1.2);
+  lensMove(ev.clientX);
 });
 function endTabDrag(ev) {
   if (!tabDrag || (ev && ev.pointerId !== tabDrag.id)) return;
@@ -1167,6 +1195,7 @@ function endTabDrag(ev) {
   const bar = document.getElementById('tabbar');
   bar.classList.remove('dragging', 'pressing');
   markOver(null);
+  lensHide();
   unmagnify([...bar.querySelectorAll('button[data-tab]')]);
   if (ev && ev.type === 'pointercancel') { renderTabbar(); return; }
   if (target) { placePill(target); switchTab(target.dataset.tab); }
