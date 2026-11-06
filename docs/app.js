@@ -1,5 +1,5 @@
 'use strict';
-/* Bifă – web app (PWA). Data stays on the phone (localStorage). */
+/* Notez – web app (PWA). Data stays on the phone (localStorage). */
 
 const KEY = 'bifa.data.v1';
 const VERSION = '1.0';
@@ -309,7 +309,7 @@ function buildIcs(e) {
   if (e.hasDeadline) lines.push(`${c?.deadlineLabel || 'Termen'}: ${deadlineText(e)}`);
   const pending = (e.subs || []).filter(s => !s.done).map(s => '• ' + s.title);
   if (pending.length) lines.push(pending.join('\n'));
-  lines.push('— din Bifă (' + (c?.name || '') + ')');
+  lines.push('— din Notez (' + (c?.name || '') + ')');
   const rrule = { daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY' }[e.repeat];
   const out = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Bifa//RO', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
@@ -331,7 +331,7 @@ async function addAlarm(e) {
   const ics = buildIcs(e);
   e.alarmFor = alarmKey(e);
   save();
-  const name = 'bifa-' + e.title.replace(/[^\p{L}\p{N}]+/gu, '-').slice(0, 30) + '.ics';
+  const name = 'notez-' + e.title.replace(/[^\p{L}\p{N}]+/gu, '-').slice(0, 30) + '.ics';
   const blob = new Blob([ics], { type: 'text/calendar' });
   const url = URL.createObjectURL(blob);
   const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -374,10 +374,14 @@ const ICON = {
   up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  grip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>',
   upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7 9l5-5 5 5M5 20h14"/></svg>',
 };
 
 // ---------- rendering: shared pieces ----------
+const APP_NAME = 'Notez';
+const brand = () => `<div class="brand"><img src="icons/icon-192.png" alt=""><span>${APP_NAME}</span></div>`;
 const chip = (text, color, act) => act
   ? `<button class="chip" style="--cc:${color}" ${act}>${esc(text)}</button>`
   : `<span class="chip" style="--cc:${color}">${esc(text)}</span>`;
@@ -466,10 +470,10 @@ function screenToday() {
     else if ((d && d < tomorrow) || (r && sameDay(r, new Date()))) td.push(e);
     else if (d && d < weekEnd) wk.push(e);
   }
-  const install = !isStandalone() ? `<div class="banner"><b>📲 Pune Bifă pe ecranul telefonului</b>În Safari apasă <b style="display:inline">Partajează</b> (pătratul cu săgeată) → <b style="display:inline">Adaugă pe ecranul principal</b>.</div>` : '';
+  const install = !isStandalone() ? `<div class="banner"><b>📲 Pune Notez pe ecranul telefonului</b>În Safari apasă <b style="display:inline">Partajează</b> (pătratul cu săgeată) → <b style="display:inline">Adaugă pe ecranul principal</b>.</div>` : '';
   const sec = (title, items, cls) => items.length ? `<div class="sec-title ${cls}">${title}</div><div class="group">${items.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : '';
   return `
-    <div class="topbar"><div class="left"></div><div class="right"><button class="iconbtn fill" data-act="new-pick">${ICON.plus}</button></div></div>
+    <div class="topbar"><div class="left">${brand()}</div><div class="right"><button class="iconbtn fill" data-act="new-pick">${ICON.plus}</button></div></div>
     <h1>${esc(cap(fLong.format(new Date())))}</h1>
     ${install}
     <div class="tiles three">
@@ -504,8 +508,9 @@ function screenLists() {
     </div>`;
   }).join('');
   return `
-    <div class="topbar"><div class="left"><button class="back" data-act="reorder">${ui.reorder ? 'Gata' : 'Ordine'}</button></div>
-      <div class="right"><button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button></div></div>
+    <div class="topbar"><div class="left">${brand()}</div>
+      <div class="right"><button class="back" data-act="reorder" style="padding:6px 8px">${ui.reorder ? 'Gata' : 'Ordine'}</button>
+      <button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button></div></div>
     <h1>Liste</h1>
     <div class="group">${rows || '<div class="empty">Nicio listă.</div>'}</div>
     <div class="group mt"><button class="linkrow" data-act="cat-new">${ICON.plus} Listă nouă</button></div>
@@ -566,7 +571,8 @@ function screenCategory(c) {
   const showTiles = c.summary && all.length;
   return `
     <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
-      <div class="right"><button class="iconbtn" data-act="cat-menu" data-id="${c.id}">${ICON.more}</button>
+      <div class="right">${c.usesAmount ? `<button class="iconbtn" data-act="stats" data-id="${c.id}" aria-label="Statistici">${ICON.chart}</button>` : ''}
+      <button class="iconbtn" data-act="cat-menu" data-id="${c.id}">${ICON.more}</button>
       <button class="iconbtn fill" style="background:${col}" data-act="new" data-id="${c.id}">${ICON.plus}</button></div></div>
     <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
     ${showTiles ? `<div class="tiles">${tiles.join('')}</div>` : ''}
@@ -584,7 +590,7 @@ function screenReminders() {
   const keys = Object.keys(days).map(Number).sort((a, b) => a - b);
   const notAdded = upcoming.filter(e => !alarmAdded(e)).length;
   return `
-    <div class="topbar"><div class="left"></div><div class="right"><button class="iconbtn fill" data-act="new-pick" data-rem="1">${ICON.plus}</button></div></div>
+    <div class="topbar"><div class="left">${brand()}</div><div class="right"><button class="iconbtn fill" data-act="new-pick" data-rem="1">${ICON.plus}</button></div></div>
     <h1>Remindere</h1>
     ${notAdded ? `<div class="banner"><b>🔔 ${notAdded} ${notAdded === 1 ? 'reminder fără alarmă' : 'remindere fără alarmă'}</b>Apasă „+ Pune alarmă” ca să sune la ora aleasă, chiar dacă aplicația e închisă (se pune în Calendarul iPhone-ului).</div>` : ''}
     ${!missed.length && !keys.length ? `<div class="empty"><div class="big">🔔</div><b>Niciun reminder</b>Adaugă unul cu + sau pune „Amintește-mi” la orice element.</div>` : ''}
@@ -700,14 +706,15 @@ function entrySheetHtml() {
   if (c.usesSubs) {
     const done = d.subs.filter(s => s.done).length;
     parts.push(`<div class="fhead">${esc(c.subsLabel)}</div><div class="form">
-      ${d.subs.map(s => `<div class="subedit ${s.done ? 'on' : ''}">
+      <div class="sublist">${d.subs.map(s => `<div class="subedit ${s.done ? 'on' : ''}" data-row="${s.id}">
         <button class="subcheck ${s.done ? 'on' : ''}" style="--c:${col}" data-act="dsub-toggle" data-sid="${s.id}">${ICON.check}</button>
         <input type="text" value="${esc(s.title)}" data-subtitle="${s.id}">
-        <button class="x" data-act="dsub-del" data-sid="${s.id}" aria-label="Șterge">×</button></div>`).join('')}
+        <button class="x" data-act="dsub-del" data-sid="${s.id}" aria-label="Șterge">×</button>
+        ${d.subs.length > 1 ? `<span class="handle" data-drag="${s.id}" aria-label="Mută">${ICON.grip}</span>` : ''}</div>`).join('')}</div>
       <div class="subedit"><span style="color:${col};font-size:22px;width:20px;text-align:center">+</span>
         <input type="text" id="newsub" placeholder="Adaugă (Enter pentru următorul)" enterkeyhint="next"></div>
     </div>
-    ${d.subs.length ? `<div class="ffoot">${done} din ${d.subs.length} bifate${c.subsAuto ? ' · se bifează singur când sunt toate' : ''}</div>` : ''}`);
+    ${d.subs.length ? `<div class="ffoot">${done} din ${d.subs.length} bifate${c.subsAuto ? ' · se bifează singur când sunt toate' : ''}${d.subs.length > 1 ? ' · ține apăsat pe ☰ și trage ca să le muți' : ''}</div>` : ''}`);
   }
 
   if (c.usesDir || c.usesVendor || c.usesTracking || c.usesAmount) {
@@ -907,6 +914,122 @@ function saveCategory() {
   toast('Lista e salvată ✓');
 }
 
+// ---------- statistics (lists with money) ----------
+const fMonth = new Intl.DateTimeFormat('ro-RO', { month: 'short' });
+const fMonthLong = new Intl.DateTimeFormat('ro-RO', { month: 'long', year: 'numeric' });
+const monthKey = d => `${d.getFullYear()}-${d.getMonth()}`;
+const itemDate = (e, c) => (c.usesDir && e.hasDeadline && parseLocal(e.deadline)) || new Date(e.createdAt);
+const nItems = n => `${n} ${n === 1 ? 'element' : 'elemente'}`;
+
+function openStats(catId) {
+  ui.sheet = { type: 'stats', catId, range: '6', sel: monthKey(new Date()) };
+  renderSheet();
+}
+function statsHtml() {
+  const s = ui.sheet;
+  const c = catById(s.catId);
+  const col = colorOf(c);
+  const all = db.entries.filter(e => e.cat === c.id && e.hasAmount && e.amount > 0);
+  const now = new Date();
+
+  // the currency used most is the one we chart
+  const counts = {};
+  all.forEach(e => { counts[e.currency] = (counts[e.currency] || 0) + 1; });
+  const cur = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || c.currency || 'RON';
+
+  let months = +s.range;
+  if (s.range === 'all') {
+    const first = all.reduce((m, e) => Math.min(m, +itemDate(e, c)), +now);
+    const f = new Date(first);
+    months = Math.min(36, Math.max(1, (now.getFullYear() - f.getFullYear()) * 12 + now.getMonth() - f.getMonth() + 1));
+  }
+  const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+  const inRange = all.filter(e => itemDate(e, c) >= start && itemDate(e, c) <= addDays(now, 400));
+  // for "de plătit / de primit" lists the chart shows spending; income gets its own tile
+  const spend = c.usesDir ? inRange.filter(e => e.dir !== 'in') : inRange;
+  const main = spend.filter(e => e.currency === cur);
+  const other = spend.filter(e => e.currency !== cur);
+
+  const buckets = [];
+  for (let i = 0; i < months; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+    buckets.push({ key: monthKey(d), d, sum: 0, n: 0 });
+  }
+  const byKey = Object.fromEntries(buckets.map(b => [b.key, b]));
+  for (const e of main) {
+    const b = byKey[monthKey(itemDate(e, c))];
+    if (b) { b.sum += e.amount; b.n++; }
+  }
+  const max = Math.max(0, ...buckets.map(b => b.sum));
+  const total = main.reduce((t, e) => t + e.amount, 0);
+  const sel = byKey[s.sel] || buckets[buckets.length - 1];
+
+  const tiles = [
+    tile(c.usesDir ? 'Plătit / de plătit' : 'Total', money(total, cur), col),
+    tile('Număr', main.length, 'var(--blue)'),
+    tile('Medie', main.length ? money(total / main.length, cur) : '–', 'var(--purple)'),
+  ];
+  if (c.usesDir) {
+    const inc = inRange.filter(e => e.dir === 'in').map(e => [e.amount, e.currency]);
+    tiles.push(tile('De primit / primit', totals(inc), 'var(--green)'));
+  } else if (c.usesPaid) {
+    tiles.push(tile('Neplătit acum', totals(all.filter(e => !e.paid).map(e => [e.amount, e.currency])), 'var(--red)'));
+  } else {
+    tiles.push(tile('Luna asta', money(byKey[monthKey(now)]?.sum || 0, cur), 'var(--orange)'));
+  }
+
+  const showEvery = months <= 12 ? 1 : months <= 24 ? 2 : 3;
+  const bars = buckets.map((b, i) => {
+    const h = max ? Math.max(b.sum ? 3 : 0, Math.round((b.sum / max) * 100)) : 0;
+    return `<button class="bar ${b === sel ? 'sel' : ''}" data-act="stats-sel" data-k="${b.key}" aria-label="${esc(fMonthLong.format(b.d))}: ${esc(money(b.sum, cur))}">
+      <span class="area"><span class="col" style="height:${h}%;--c:${col}"></span></span>
+      <span class="ml">${i % showEvery === 0 || b === sel ? esc(fMonth.format(b.d).replace('.', '')) : ''}</span></button>`;
+  }).join('');
+
+  // top vendors / people
+  let vendorsHtml = '';
+  if (c.usesVendor) {
+    const v = {};
+    for (const e of main) { const k = e.vendor || '(fără nume)'; (v[k] ||= { sum: 0, n: 0 }); v[k].sum += e.amount; v[k].n++; }
+    const top = Object.entries(v).sort((a, b) => b[1].sum - a[1].sum).slice(0, 6);
+    const vmax = top.length ? top[0][1].sum : 0;
+    if (top.length) {
+      vendorsHtml = `<div class="fhead">Top ${esc(c.vendorLabel.toLowerCase())}</div><div class="form">
+        ${top.map(([name, x]) => `<div class="hbar"><div class="hbar-top"><span>${esc(name)}</span><b>${esc(money(x.sum, cur))}</b></div>
+          <div class="hbar-track"><span style="width:${vmax ? Math.max(2, x.sum / vmax * 100) : 0}%;background:${col}"></span></div>
+          <div class="hbar-sub">${nItems(x.n)}</div></div>`).join('')}</div>`;
+    }
+  }
+
+  // done / pending counts (e.g. orders received vs waiting)
+  const inRangeAll = db.entries.filter(e => e.cat === c.id && itemDate(e, c) >= start);
+  const doneN = inRangeAll.filter(e => e.done).length;
+  const subsN = c.usesSubs ? inRangeAll.reduce((t, e) => t + (e.subs || []).length, 0) : 0;
+
+  return `<div class="overlay"></div>
+  <div class="panel" style="--accent:${col}">
+    <div class="panel-head"><button data-act="sheet-close">Închide</button><div class="t">📊 ${esc(c.name)}</div><span style="min-width:70px"></span></div>
+    <div class="panel-body">
+      <div class="segin">${[['6', '6 luni'], ['12', '12 luni'], ['all', 'Tot']].map(([k, l]) => `<button class="${s.range === k ? 'on' : ''}" data-act="stats-range" data-v="${k}">${l}</button>`).join('')}</div>
+      ${!all.length ? `<div class="empty"><div class="big">📊</div><b>Încă nu sunt date</b>Adaugă elemente cu sumă și aici apar totalurile pe luni.</div>` : `
+      <div class="tiles">${tiles.join('')}</div>
+      <div class="fhead">${c.usesDir ? 'De plătit' : 'Total'} pe luni (${esc(cur)})</div>
+      <div class="form chart">
+        <div class="readout"><b>${esc(cap(fMonthLong.format(sel.d)))}</b><span>${esc(money(sel.sum, cur))} · ${nItems(sel.n)}</span></div>
+        <div class="bars">${bars}</div>
+      </div>
+      <div class="ffoot">Apasă pe o lună ca să vezi suma.${other.length ? ` Sumele în altă monedă (${esc(totals(other.map(e => [e.amount, e.currency])))}) nu apar în grafic.` : ''}</div>
+      ${vendorsHtml}
+      <div class="fhead">Pe scurt</div>
+      <div class="form">
+        <div class="field"><span class="lbl">${esc(c.doneLabel)}</span><b>${doneN} din ${inRangeAll.length}</b></div>
+        ${c.usesSubs ? `<div class="field"><span class="lbl">${esc(c.subsLabel)} în total</span><b>${subsN}</b></div>` : ''}
+        ${main.length ? `<div class="field"><span class="lbl">Cea mai mare sumă</span><b>${esc(money(Math.max(...main.map(e => e.amount)), cur))}</b></div>` : ''}
+      </div>`}
+    </div>
+  </div>`;
+}
+
 // ---------- action sheet ----------
 function openActions(title, actions) {
   ui.sheet = { type: 'actions', title, actions };
@@ -926,7 +1049,8 @@ function renderSheet() {
   ui.pendingRerender = false;
   const body = el.querySelector('.panel-body');
   const scroll = body ? body.scrollTop : 0;
-  el.innerHTML = ui.sheet.type === 'entry' ? entrySheetHtml() : ui.sheet.type === 'category' ? categorySheetHtml() : actionsHtml();
+  const t = ui.sheet.type;
+  el.innerHTML = t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml() : actionsHtml();
   const nb = el.querySelector('.panel-body');
   if (nb) nb.scrollTop = scroll;
   // no slide animation on re-render
@@ -948,10 +1072,10 @@ function toast(msg) {
 // ---------- backup ----------
 function exportData() {
   const blob = new Blob([JSON.stringify(db, null, 1)], { type: 'application/json' });
-  const name = `bifa-backup-${toLocal(new Date()).slice(0, 10)}.json`;
+  const name = `notez-backup-${toLocal(new Date()).slice(0, 10)}.json`;
   const file = new File([blob], name, { type: 'application/json' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    navigator.share({ files: [file], title: 'Backup Bifă' }).catch(() => {});
+    navigator.share({ files: [file], title: 'Backup Notez' }).catch(() => {});
     return;
   }
   const a = document.createElement('a');
@@ -972,7 +1096,7 @@ function importData() {
       if (!Array.isArray(d.categories) || !Array.isArray(d.entries)) throw new Error('format');
       if (!confirm(`Înlocuiesc datele actuale cu backup-ul (${d.categories.length} liste, ${d.entries.length} elemente)?`)) return;
       db = d; save(); ui.catId = null; render(); toast('Backup încărcat ✓');
-    } catch (e) { alert('Fișierul nu e un backup Bifă valid.'); }
+    } catch (e) { alert('Fișierul nu e un backup Notez valid.'); }
   };
   inp.click();
 }
@@ -990,6 +1114,9 @@ document.addEventListener('click', ev => {
     case 'open': { const e = entryById(id); if (e) openEntry(e.cat, e.id); break; }
     case 'toggle': { const e = entryById(id); if (e) askThenToggle(e); break; }
     case 'undo': undoDone(id); break;
+    case 'stats': openStats(id); break;
+    case 'stats-range': s.range = el.dataset.v; s.sel = monthKey(new Date()); renderSheet(); break;
+    case 'stats-sel': s.sel = el.dataset.k; renderSheet(); break;
     case 'set-confirm': db.settings = { ...(db.settings || {}), confirmCheck: !db.settings?.confirmCheck }; save(); render(); break;
     case 'sub': { const e = entryById(id); if (e) { toggleSub(e, el.dataset.sid); render(); } break; }
     case 'alarm': { const e = entryById(id); if (e) addAlarm(e); break; }
@@ -1153,6 +1280,66 @@ function setBound(b, value, rerender) {
   }
   if (rerender) renderSheet();
 }
+
+// ---------- drag & drop to reorder sub-items (products) ----------
+let drag = null;
+document.addEventListener('pointerdown', ev => {
+  const h = ev.target.closest('[data-drag]');
+  if (!h || ui.sheet?.type !== 'entry') return;
+  ev.preventDefault();
+  document.activeElement?.blur?.();
+  const rows = [...document.querySelectorAll('.sublist .subedit')];
+  const row = h.closest('.subedit');
+  const from = rows.indexOf(row);
+  if (from < 0) return;
+  drag = { rows, row, from, to: from, startY: ev.clientY, rects: rows.map(r => r.getBoundingClientRect()), id: ev.pointerId };
+  row.classList.add('dragging');
+  try { h.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+});
+document.addEventListener('pointermove', ev => {
+  if (!drag || ev.pointerId !== drag.id) return;
+  ev.preventDefault();
+  const { rows, rects, from } = drag;
+  const dy = ev.clientY - drag.startY;
+  drag.row.style.transform = `translateY(${dy}px)`;
+  const center = rects[from].top + rects[from].height / 2 + dy;
+  let to = 0;
+  rects.forEach((r, i) => { if (i !== from && r.top + r.height / 2 < center) to++; });
+  drag.to = to;
+  const hgt = rects[from].height;
+  rows.forEach((r, i) => {
+    if (i === from) return;
+    let shift = 0;
+    if (from < to && i > from && i <= to) shift = -hgt;
+    if (from > to && i >= to && i < from) shift = hgt;
+    r.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
+}, { passive: false });
+function endDrag() {
+  if (!drag) return;
+  const { from, to } = drag;
+  drag = null;
+  const subs = ui.sheet?.d?.subs;
+  if (subs && from !== to) {
+    const [moved] = subs.splice(from, 1);
+    subs.splice(to, 0, moved);
+    try { navigator.vibrate?.(10); } catch (e) { /* ignore */ }
+  }
+  renderSheet();
+}
+document.addEventListener('pointerup', endDrag);
+document.addEventListener('pointercancel', endDrag);
+
+// ---------- iPhone: close the keyboard when you start scrolling ----------
+// (otherwise the blinking text cursor drifts while the panel scrolls)
+let touchY = null;
+document.addEventListener('touchstart', ev => { touchY = ev.touches[0]?.clientY ?? null; }, { passive: true });
+document.addEventListener('touchmove', ev => {
+  if (touchY === null || drag) return;
+  const a = document.activeElement;
+  if (!a || !['INPUT', 'TEXTAREA'].includes(a.tagName) || a.contains(ev.target)) return;
+  if (Math.abs((ev.touches[0]?.clientY ?? touchY) - touchY) > 12) { a.blur(); touchY = null; }
+}, { passive: true });
 
 // in-app heads-up for reminders that become due while the app is open
 let lastCheck = Date.now();
