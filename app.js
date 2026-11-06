@@ -67,7 +67,7 @@ function parseAmount(t) {
 const PALETTE = ['#5B6BFA', '#FF8C40', '#2EB87A', '#F2B31A', '#ED548C', '#9961F2', '#1AB3CC', '#EB4240', '#8C6B4D', '#738094'];
 const EMOJIS = ['✅', '📦', '💳', '📝', '🔔', '🛒', '🛍️', '🏠', '💼', '❤️', '⭐', '🎁', '🚗', '✈️', '🍽️', '💊', '📚', '🎓', '🏋️', '🐾', '🌿', '🔧', '📄', '📅', '💰', '🏦', '👥', '📞', '💡', '🏷️', '📁', '🎵', '🎮', '👕', '🎂', '🧾'];
 const CURRENCIES = ['RON', 'EUR', 'USD', 'GBP'];
-const REPEATS = { none: 'Niciodată', daily: 'Zilnic', weekly: 'Săptămânal', monthly: 'Lunar', yearly: 'Anual' };
+const REPEATS = { none: 'Niciodată', daily: 'Zilnic', custom: 'La fiecare câteva zile', dates: 'Zile alese din calendar', weekly: 'Săptămânal', monthly: 'Lunar', yearly: 'Anual' };
 const PRIORITIES = ['Normal', 'Important', 'Urgent'];
 const REM_MODES = { off: 'Fără remindere', optional: 'Opțional, la fiecare element', always: 'Fiecare element e un reminder' };
 const GROUP_MODES = { date: 'După dată', group: 'După grup', none: 'Ordinea mea' };
@@ -78,6 +78,9 @@ const TEMPLATES = {
   note: { label: 'Notițe', icon: '📝', color: 3 },
   reminder: { label: 'Remindere', icon: '🔔', color: 4 },
   meds: { label: 'Medicamente', icon: '💊', color: 6 },
+  shopping: { label: 'Cumpărături', icon: '🛒', color: 2 },
+  leave: { label: 'Zile de concediu', icon: '🏖️', color: 6 },
+  office: { label: 'Zile la birou', icon: '🏢', color: 0 },
   blank: { label: 'Listă simplă', icon: '📁', color: 5 },
 };
 
@@ -103,6 +106,10 @@ function templateRules(t) {
   if (t === 'note') set({ usesGroups: true, groupMode: 'group', placeholder: 'Titlu notiță' });
   if (t === 'reminder') set({ usesDeadline: false, reminderMode: 'always', doneLabel: 'Gata', placeholder: 'Ce să-ți amintesc?' });
   if (t === 'blank') set({ usesDeadline: false, groupMode: 'none' });
+  // "app" lists open a full mini-app (the Concediu / Calendar Birou apps) inside MindMe
+  if (t === 'leave') set({ kind: 'app', appUrl: 'concediu.html', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false });
+  if (t === 'office') set({ kind: 'app', appUrl: 'birou.html', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false });
+  if (t === 'shopping') set({ kind: 'shopping', usesDeadline: false, reminderMode: 'off', usesGroups: true, groupMode: 'group', summary: false, placeholder: 'Ce cumperi?', doneLabel: 'În coș' });
   if (t === 'meds') set({ kind: 'meds', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false, placeholder: 'Numele medicamentului', doneLabel: 'Oprit' });
   return r;
 }
@@ -116,13 +123,127 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw);
-      if (d && Array.isArray(d.categories) && Array.isArray(d.entries)) return addMedsListOnce(d);
+      if (d && Array.isArray(d.categories) && Array.isArray(d.entries)) return addAppListsOnce(addShoppingListOnce(addMedsListOnce(d)));
     }
   } catch (e) { /* ignore */ }
-  const d = { v: 1, categories: [], entries: [], medsAdded: true };
-  ['task', 'order', 'payment', 'note', 'reminder', 'meds'].forEach((t, i) => {
+  const d = { v: 1, categories: [], entries: [], medsAdded: true, shopAdded: true, appsAdded: true };
+  ['task', 'shopping', 'order', 'payment', 'note', 'reminder', 'meds', 'leave', 'office'].forEach((t, i) => {
     d.categories.push({ id: uid(), name: TEMPLATES[t].label, icon: TEMPLATES[t].icon, color: TEMPLATES[t].color, order: i, ...templateRules(t) });
   });
+  return d;
+}
+// (function declarations, because they already run while the data loads)
+function normText(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
+
+// store aisles, in the order you walk through a shop; keywords without diacritics
+function aisles() {
+  return [
+    ['Fructe și legume', '🥦', 'mere mar banane banana portocal lamai lamaie lime mandarin grepfrut struguri capsuni afine zmeura pere para kiwi ananas pepene piersic nectarin caise cirese visine prune avocado mango rodie rosii rosie cherry castrav ardei ceapa usturoi cartof morcov varza salata spanac broccoli brocoli conopid dovlec vinete ciuperci patrunjel marar leustean telina ridichi sfecla ghimbir rucola verdeata fructe legume lamaita praz'],
+    ['Brutărie', '🥖', 'paine franzel bagheta chifl covrigi proaspeti corn croissant lipie toast pandispan cozonac blat chec placinta merdenea foietaj'],
+    ['Lactate și ouă', '🥛', 'lapte iaurt branza telemea cascaval smantana unt oua ou kefir sana frisca mozzarella parmezan mascarpone ricotta cottage urda lactate budinca branzica margarina'],
+    ['Carne și pește', '🥩', 'carne pui piept pulpe pulpa porc vita vitel curcan miel tocat tocata ceafa cotlet antricot muschi peste somon crap pastrav dorada creveti file aripi ficat mici'],
+    ['Mezeluri', '🥓', 'salam sunca parizer crenvurst carnati bacon kaiser pastrama prosciutto pate mezel'],
+    ['Congelate', '🧊', 'congelat congelate inghetata cuburi gheata'],
+    ['Băcănie', '🍝', 'paste spaghete penne macaroane taitei orez faina zahar sare piper ulei otet conserv ton fasole mazare porumb linte naut malai gris fulgi cereale musli ketchup mustar maioneza sos bulion pasta de tomate condiment boia oregano cimbru drojdie praf de copt miere gem dulceata unt de arahide nutella supa foi quinoa masline cornflakes'],
+    ['Dulciuri și snacks', '🍫', 'ciocolat biscuit napolitan chips bomboan prajitur tort alune arahide nuci migdale caju seminte popcorn covrigei snacks baton guma jeleuri dulciuri'],
+    ['Băuturi', '🥤', 'apa suc sucuri cola pepsi fanta sprite bere vin sampanie prosecco whisky vodka tuica gin lichior limonada energizant red bull nectar sirop tonic'],
+    ['Cafea și ceai', '☕', 'cafea ceai capsule espresso nescafe cacao'],
+    ['Curățenie', '🧽', 'detergent balsam de rufe clor domestos vanish burete bureti lavete saci menajer saci de gunoi solutie geamuri vase pastile vase tablete vase hartie de bucatarie prosoape de hartie servetele folie odorizant mop manusi'],
+    ['Igienă și cosmetice', '🧴', 'sapun sampon balsam de par gel de dus pasta de dinti periuta deodorant hartie igienica crema lame aparat de ras spuma de ras tampoane absorbante dischete betisoare ata dentara apa de gura parfum lotiune servetele umede'],
+    ['Bebeluși', '👶', 'scutece lapte praf piure biberon'],
+    ['Animale', '🐾', 'hrana caine hrana pisica hrana pisici mancare caine mancare pisica nisip pisici'],
+    ['Farmacie', '💊', 'paracetamol nurofen ibuprofen algocalmin vitamine plasturi sirop de tuse'],
+    ['Altele', '🧺', ''],
+  ];
+}
+// big product catalog (nice names with diacritics) used for suggestions while typing and for sorting.
+// Brands from Romanian shops included, so "Snickers" or "lapte Zuzu" land in the right aisle.
+function shopCatalog() {
+  const C = {
+    'Fructe și legume': 'Mere, Banane, Portocale, Lămâi, Lime, Mandarine, Clementine, Grepfrut, Struguri, Căpșuni, Afine, Zmeură, Mure, Pere, Kiwi, Ananas, Pepene verde, Pepene galben, Piersici, Nectarine, Caise, Cireșe, Vișine, Prune, Avocado, Mango, Rodie, Smochine, Curmale, Roșii, Roșii cherry, Castraveți, Ardei gras, Ardei kapia, Ardei iute, Ceapă, Ceapă roșie, Ceapă verde, Usturoi, Cartofi, Cartofi dulci, Morcovi, Varză, Varză roșie, Salată verde, Spanac, Rucola, Broccoli, Conopidă, Dovlecei, Dovleac, Vinete, Ciuperci, Pătrunjel, Mărar, Leuștean, Busuioc, Țelină, Ridichi, Sfeclă roșie, Praz, Ghimbir, Fasole verde, Porumb dulce, Varză chinezească',
+    'Brutărie': 'Pâine, Pâine albă, Pâine neagră, Pâine integrală, Franzelă, Baghetă, Chifle, Covrigi, Cornuri, Croissant, Lipii, Pâine toast, Cozonac, Pandișpan, Blat de tort, Chec, Plăcintă, Merdenele, Foietaj, Vel Pitar, Boromir, 7Days',
+    'Lactate și ouă': 'Lapte, Lapte Zuzu, Lapte Napolact, Lapte Covalact, Lapte fără lactoză, Lapte de ovăz, Lapte de migdale, Iaurt, Iaurt grecesc, Iaurt de băut, Activia, Danone, Kefir, Sana, Lapte bătut, Smântână, Frișcă, Unt, Margarină, Brânză, Brânză de vaci, Telemea, Telemea de vacă, Cașcaval, Mozzarella, Parmezan, Mascarpone, Ricotta, Brânză topită, Hochland, Philadelphia, Delaco, Olympus, President, Babybel, Ouă, Budincă, Desert lactat',
+    'Carne și pește': 'Piept de pui, Pulpe de pui, Aripioare de pui, Pui întreg, Carne tocată, Carne de porc, Ceafă de porc, Cotlet de porc, Mușchi de porc, Carne de vită, Mușchi de vită, Carne de curcan, Carne de miel, Mici, Ficat de pui, Somon, Păstrăv, Crap, Doradă, Biban, Creveți, File de pește, Cod',
+    'Mezeluri': 'Salam, Salam de Sibiu, Șuncă, Parizer, Crenvurști, Cârnați, Bacon, Kaiser, Pastramă, Prosciutto, Pate, Cris-Tim, Aldis, Caroli, Scandia, Angst, Pate de ficat',
+    'Congelate': 'Înghețată, Magnum, Algida, Cornetto, Pizza congelată, Legume congelate, Cartofi prăjiți congelați, Pește congelat, Gheață, Fructe congelate',
+    'Băcănie': 'Paste, Spaghete, Penne, Fusilli, Macaroane, Tăiței, Barilla, Panzani, Orez, Făină, Mălai, Griș, Zahăr, Zahăr pudră, Sare, Piper, Ulei, Ulei de măsline, Oțet, Fasole boabe, Mazăre, Porumb conservă, Ton conservă, Linte, Năut, Fulgi de ovăz, Cereale, Musli, Cornflakes, Ketchup, Muștar, Maioneză, Sos de roșii, Bulion, Pastă de tomate, Condimente, Boia, Oregano, Cimbru, Drojdie, Praf de copt, Zahăr vanilat, Miere, Gem, Dulceață, Unt de arahide, Nutella, Supă la plic, Knorr, Maggi, Kotanyi, Foi de lasagna, Quinoa, Măsline, Conserve, Heinz, Hellmann\'s, Develey',
+    'Dulciuri și snacks': 'Ciocolată, Ciocolată cu lapte, Ciocolată neagră, Milka, Snickers, Mars, Twix, Bounty, KitKat, Lion, Kinder, Kinder Bueno, Ferrero Rocher, Raffaello, Toblerone, Lindt, Heidi, Poiana, Rom, Africana, Kandia, Biscuiți, Oreo, Belvita, Eugenia, Napolitane, Joe, Chips, Lay\'s, Chio, Pringles, Doritos, Bomboane, Haribo, Jeleuri, M&M\'s, Skittles, Mentos, Gumă, Orbit, Tic Tac, Prăjitură, Tort, Alune, Arahide, Nuci, Migdale, Caju, Semințe, Popcorn, Covrigei, Batoane proteice, Croissant 7Days, Toffifee',
+    'Băuturi': 'Apă plată, Apă minerală, Borsec, Dorna, Aqua Carpatica, Bucovina, Izvorul Minunilor, Suc, Suc de portocale, Coca-Cola, Pepsi, Fanta, Sprite, Schweppes, 7Up, Tymbark, Cappy, Granini, Prigat, Limonadă, Ice tea, Fuze Tea, Red Bull, Monster, Hell, Bere, Ursus, Timișoreana, Ciuc, Heineken, Stella Artois, Tuborg, Carlsberg, Peroni, Bergenbier, Vin roșu, Vin alb, Vin rose, Șampanie, Prosecco, Whisky, Vodcă, Gin, Rom de băut, Țuică, Lichior, Sirop',
+    'Cafea și ceai': 'Cafea, Cafea boabe, Cafea măcinată, Capsule cafea, Jacobs, Lavazza, Tchibo, Doncafe, Nescafe, Illy, Ceai, Ceai verde, Ceai negru, Lipton, Cacao, Ciocolată caldă',
+    'Curățenie': 'Detergent rufe, Ariel, Persil, Dero, Bonux, Omo, Balsam de rufe, Lenor, Detergent de vase, Fairy, Pur, Tablete mașină de spălat vase, Finish, Somat, Calgon, Soluție de geamuri, Cif, Domestos, Mr. Proper, Vanish, Clor, Bureți, Lavete, Saci menajeri, Saci de gunoi, Hârtie de bucătărie, Prosoape de hârtie, Șervețele, Folie alimentară, Folie de aluminiu, Odorizant, Mop, Mănuși',
+    'Igienă și cosmetice': 'Hârtie igienică, Zewa, Săpun, Săpun lichid, Gel de duș, Șampon, Balsam de păr, Pastă de dinți, Colgate, Sensodyne, Periuță de dinți, Apă de gură, Ață dentară, Deodorant, Nivea, Dove, Rexona, Head & Shoulders, Gillette, Lame de ras, Spumă de ras, Palmolive, Garnier, Cremă de mâini, Cremă de față, Loțiune de corp, Dischete demachiante, Bețișoare, Absorbante, Tampoane, Servețele umede, Parfum',
+    'Bebeluși': 'Scutece, Pampers, Huggies, Lapte praf, Piure pentru copii, Biberon, Servețele bebeluși',
+    'Animale': 'Hrană câini, Hrană pisici, Whiskas, Pedigree, Friskies, Purina, Felix, Nisip pisici, Recompense câini',
+    'Farmacie': 'Paracetamol, Nurofen, Ibuprofen, Algocalmin, Vitamine, Vitamina C, Magneziu, Plasturi, Sirop de tuse, Spray nazal, Termometru',
+  };
+  const out = [];
+  for (const [aisle, list] of Object.entries(C)) list.split(',').map(s => s.trim()).filter(Boolean).forEach(name => out.push({ name, aisle }));
+  return out;
+}
+var SHOP_CATALOG;
+function catalog() { if (!SHOP_CATALOG) SHOP_CATALOG = shopCatalog(); return SHOP_CATALOG; }
+
+// keyword → aisle, longest keywords first so "lapte praf" beats "lapte" and "apa de gura" beats "apa"
+function aisleKeywords() {
+  const out = [];
+  for (const [name, , words] of aisles()) {
+    // multi-word keywords are written with their words joined by single spaces in the list above;
+    // known multi-word phrases are matched first
+    const phrases = ['balsam de rufe', 'saci menajer', 'saci de gunoi', 'pastile vase', 'tablete vase', 'hartie de bucatarie', 'prosoape de hartie',
+      'balsam de par', 'gel de dus', 'pasta de dinti', 'hartie igienica', 'aparat de ras', 'spuma de ras', 'ata dentara', 'apa de gura', 'servetele umede',
+      'lapte praf', 'hrana caine', 'hrana pisica', 'hrana pisici', 'mancare caine', 'mancare pisica', 'nisip pisici', 'sirop de tuse',
+      'unt de arahide', 'praf de copt', 'pasta de tomate', 'red bull', 'covrigi proaspeti'];
+    let rest = ' ' + words + ' ';
+    for (const p of phrases) if (rest.includes(' ' + p + ' ')) { out.push([p, name]); rest = rest.replace(' ' + p + ' ', ' '); }
+    rest.split(' ').filter(Boolean).forEach(w => out.push([w, name]));
+  }
+  // every catalog product / brand is a keyword too ("snickers", "lapte zuzu", "aqua carpatica"...)
+  for (const p of catalog()) {
+    const k = normText(p.name).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (k) out.push([k, p.aisle]);
+  }
+  return out.sort((a, b) => b[0].length - a[0].length);
+}
+var AISLE_KW;   // var: it is used while the data loads, before this line runs
+function guessAisle(title) {
+  if (!AISLE_KW) AISLE_KW = aisleKeywords();
+  const n = ' ' + normText(title).replace(/[^a-z0-9 ]+/g, ' ') + ' ';
+  for (const [kw, name] of AISLE_KW) if (n.includes(' ' + kw)) return name;
+  return 'Altele';
+}
+function aisleIcon(name) { const a = aisles().find(x => x[0] === name); return a ? a[1] : '🧺'; }
+
+// existing users get the "Cumpărături" list once: a list already called "Cumpărături" is upgraded
+// (its items are kept and sorted into aisles), otherwise a new one is added right after the first list
+function addShoppingListOnce(d) {
+  if (d.shopAdded) return d;
+  if (!d.categories.some(c => c.kind === 'shopping')) {
+    const same = d.categories.find(c => normText(c.name) === 'cumparaturi');
+    if (same) {
+      const keep = { id: same.id, name: same.name, icon: same.icon, color: same.color, order: same.order };
+      Object.assign(same, templateRules('shopping'), keep);
+      d.entries.filter(e => e.cat === same.id && !e.group).forEach(e => { e.group = guessAisle(e.title); });
+    } else {
+      d.categories.forEach(c => { if ((c.order || 0) >= 1) c.order = (c.order || 0) + 1; });
+      d.categories.push({ id: uid(), name: TEMPLATES.shopping.label, icon: TEMPLATES.shopping.icon, color: TEMPLATES.shopping.color, order: 1, ...templateRules('shopping') });
+    }
+  }
+  d.shopAdded = true;
+  try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* ignore */ }
+  return d;
+}
+// existing users get "Zile de concediu" + "Zile la birou" once, at the end of the lists
+function addAppListsOnce(d) {
+  if (d.appsAdded) return d;
+  let order = Math.max(-1, ...d.categories.map(c => c.order || 0)) + 1;
+  for (const t of ['leave', 'office']) {
+    const url = templateRules(t).appUrl;
+    const old = url.replace('.html', '/');
+    if (d.categories.some(c => c.kind === 'app' && (c.appUrl === url || c.appUrl === old))) continue;
+    d.categories.push({ id: uid(), name: TEMPLATES[t].label, icon: TEMPLATES[t].icon, color: TEMPLATES[t].color, order: order++, ...templateRules(t) });
+  }
+  d.appsAdded = true;
+  try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* ignore */ }
   return d;
 }
 // existing users get the new "Medicamente" list once (if they delete it, it doesn't come back)
@@ -147,20 +268,66 @@ const entryById = id => db.entries.find(e => e.id === id);
 const colorOf = c => PALETTE[((c?.color ?? 0) % PALETTE.length + PALETTE.length) % PALETTE.length];
 
 // ---------- entry logic ----------
+// repeating reminders: daily / every N days ("custom") / weekly / monthly / yearly,
+// optionally ending after N times (repEnd 'count') or on a date (repEnd 'until')
+const isRepeating = e => !!e.repeat && e.repeat !== 'none';
+function remStep(e, d, r) {
+  switch (e.repeat) {
+    case 'daily': return addDays(d, 1);
+    case 'custom': return addDays(d, Math.max(1, +e.repInterval || 1));
+    case 'weekly': return addDays(d, 7);
+    case 'monthly': return new Date(d.getFullYear(), d.getMonth() + 1, r.getDate(), r.getHours(), r.getMinutes());
+    case 'yearly': return new Date(d.getFullYear() + 1, r.getMonth(), r.getDate(), r.getHours(), r.getMinutes());
+    default: return null;
+  }
+}
+// is occurrence number `idx` (0 = the first one), falling on date d, past the end?
+function remPastEnd(e, d, idx) {
+  if (e.repEnd === 'count') return idx >= Math.max(1, +e.repCount || 1);
+  if (e.repEnd === 'until' && e.repUntil) return startOfDay(d) > parseLocal(e.repUntil + 'T00:00');
+  return false;
+}
+// the last occurrence, when the repetition has an end (null = never ends)
+function remLast(e) {
+  if (e.repeat === 'dates') { const l = remDates(e); return l[l.length - 1] || null; }
+  const r = parseLocal(e.reminder);
+  if (!r || !isRepeating(e) || !e.repEnd || e.repEnd === 'never') return null;
+  let d = new Date(r);
+  for (let i = 1; i < 5000; i++) {
+    const n = remStep(e, d, r);
+    if (!n || remPastEnd(e, n, i)) return d;
+    d = n;
+  }
+  return d;
+}
+// "dates" mode: the reminder rings at the same time on each day picked in the calendar
+function remDates(e) {
+  const t = (e.reminder || '').split('T')[1] || '09:00';
+  return [...new Set(e.repDates || [])].sort().map(k => parseLocal(k + 'T' + t)).filter(Boolean);
+}
 function nextReminder(e) {
+  if (e.repeat === 'dates') return remDates(e).find(d => d > new Date()) || null;
   const r = parseLocal(e.reminder);
   if (!r) return null;
   const now = new Date();
-  if (e.repeat === 'none' || !e.repeat || r > now) return r;
+  if (!isRepeating(e) || r > now) return r;
   let d = new Date(r);
-  for (let i = 0; i < 5000 && d <= now; i++) {
-    if (e.repeat === 'daily') d = addDays(d, 1);
-    else if (e.repeat === 'weekly') d = addDays(d, 7);
-    else if (e.repeat === 'monthly') d = new Date(d.getFullYear(), d.getMonth() + 1, r.getDate(), r.getHours(), r.getMinutes());
-    else if (e.repeat === 'yearly') d = new Date(d.getFullYear() + 1, r.getMonth(), r.getDate(), r.getHours(), r.getMinutes());
-    else break;
+  for (let i = 1; i < 5000 && d <= now; i++) {
+    const n = remStep(e, d, r);
+    if (!n) break;
+    if (remPastEnd(e, n, i)) return null;   // the repetition is over
+    d = n;
   }
   return d;
+}
+function repeatText(e) {
+  if (!isRepeating(e)) return '';
+  if (e.repeat === 'dates') { const n = (e.repDates || []).length; return `${n} ${n === 1 ? 'zi aleasă' : 'zile alese'}`; }
+  let t = e.repeat === 'custom' ? `la fiecare ${Math.max(1, +e.repInterval || 1)} zile` : REPEATS[e.repeat].toLowerCase();
+  if (e.repeat === 'custom' && +e.repInterval === 1) t = 'zilnic';
+  if (e.repEnd === 'count') t += ` · de ${Math.max(1, +e.repCount || 1)} ori`;
+  else if (e.repEnd === 'until' && e.repUntil) t += ` · până ${fmtDay(parseLocal(e.repUntil + 'T00:00')).toLowerCase()}`;
+  return t;
 }
 const deadlineOf = e => (e.hasDeadline ? parseLocal(e.deadline) : null);
 function isOverdue(e) {
@@ -179,7 +346,7 @@ const sortDate = e => deadlineOf(e) || (e.hasReminder ? nextReminder(e) : null);
 const deadlineText = e => { const d = deadlineOf(e); return d ? (e.deadlineTime ? fmtDayTime(d) : fmtDay(d)) : ''; };
 const alarmKey = e => (e.med
   ? JSON.stringify([e.title, e.med.dose, e.med.times, e.med.start, e.med.durType, e.med.days, e.med.until, e.med.weekdays])
-  : `${e.reminder}|${e.repeat}|${e.title}`);
+  : `${e.reminder}|${e.repeat}|${e.repInterval || ''}|${e.repEnd || ''}|${e.repCount || ''}|${e.repUntil || ''}|${(e.repDates || []).join(',')}|${e.title}`);
 const alarmAdded = e => (e.med ? !!e.med.alarm : e.hasReminder) && e.alarmFor === alarmKey(e);
 
 // Items checked a moment ago stay visible (struck through) for a few seconds, with an "Anulează" bar.
@@ -335,20 +502,27 @@ function buildIcs(e) {
   const pending = (e.subs || []).filter(s => !s.done).map(s => '• ' + s.title);
   if (pending.length) lines.push(pending.join('\n'));
   lines.push('— din MindMe (' + (c?.name || '') + ')');
-  const rrule = { daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY' }[e.repeat];
-  const out = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Bifa//RO', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `UID:${e.id}@bifa`,
-    `DTSTAMP:${stamp}`,
-    `DTSTART:${icsDate(start)}`,
-    `DTEND:${icsDate(end)}`,
-    `SUMMARY:${icsEscape('🔔 ' + e.title)}`,
-    `DESCRIPTION:${icsEscape(lines.join('\n'))}`,
-  ];
-  if (rrule) out.push(`RRULE:FREQ=${rrule}`);
-  out.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(e.title)}`, 'TRIGGER:-PT0M', 'END:VALARM');
-  out.push('END:VEVENT', 'END:VCALENDAR');
+  let rrule = { daily: 'DAILY', custom: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY' }[e.repeat];
+  if (rrule) {
+    if (e.repeat === 'custom' && +e.repInterval > 1) rrule += `;INTERVAL=${+e.repInterval}`;
+    if (e.repEnd === 'count') rrule += `;COUNT=${Math.max(1, +e.repCount || 1)}`;
+    else if (e.repEnd === 'until' && e.repUntil) rrule += `;UNTIL=${e.repUntil.replace(/-/g, '')}T235900`;
+  }
+  // "dates" mode → one event per picked day (all added with a single "Adaugă")
+  const starts = e.repeat === 'dates' ? remDates(e).filter(d => d > now) : [start];
+  const out = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//MindMe//RO', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  for (const s of starts) {
+    out.push('BEGIN:VEVENT',
+      `UID:${e.id}${e.repeat === 'dates' ? '-' + icsDate(s) : ''}@bifa`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${icsDate(s)}`,
+      `DTEND:${icsDate(new Date(s.getTime() + 15 * 60000))}`,
+      `SUMMARY:${icsEscape('🔔 ' + e.title)}`,
+      `DESCRIPTION:${icsEscape(lines.join('\n'))}`);
+    if (rrule) out.push(`RRULE:FREQ=${rrule}`);
+    out.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(e.title)}`, 'TRIGGER:-PT0M', 'END:VALARM', 'END:VEVENT');
+  }
+  out.push('END:VCALENDAR');
   return out.join('\r\n');
 }
 async function addAlarm(e) {
@@ -385,6 +559,7 @@ const ui = {
   reorder: false,
   sheet: null,      // { type: 'entry'|'category'|'actions', ... }
   stats: { view: 'general', range: '12', metric: 'spent', act: 'done', sel: '' },
+  searching: false, searchQ: '', searchFilter: null,
 };
 
 const ICON = {
@@ -439,9 +614,11 @@ function rowHtml(e, opts = {}) {
   if (e.hasReminder && !e.done) {
     const r = nextReminder(e);
     if (r) {
-      let t = (e.repeat && e.repeat !== 'none' ? '🔁 ' : '🔔 ') + fmtDayTime(r);
-      if (e.repeat && e.repeat !== 'none') t += ' · ' + REPEATS[e.repeat].toLowerCase();
+      let t = (isRepeating(e) ? '🔁 ' : '🔔 ') + fmtDayTime(r);
+      if (isRepeating(e)) t += ' · ' + repeatText(e);
       chips.push(chip(t, reminderMissed(e) ? 'var(--red)' : 'var(--pink)'));
+    } else if (isRepeating(e)) {
+      chips.push(chip('🔁 Remindere încheiate', 'var(--muted)'));
     }
     if (!reminderMissed(e)) {
       chips.push(alarmAdded(e)
@@ -465,7 +642,7 @@ function rowHtml(e, opts = {}) {
       <div class="subrow ${s.done ? 'on' : ''}"><button class="subcheck ${s.done ? 'on' : ''}" style="--c:${col}" data-act="sub" data-id="${e.id}" data-sid="${s.id}">${ICON.check}</button><span>${esc(s.title)}</span></div>`).join('')}
       ${subs.length > 8 ? `<div class="footnote" style="margin:0">+ încă ${subs.length - 8}</div>` : ''}</div>` : '';
 
-  return `<div class="swipe" data-swipe="entry" data-id="${e.id}" ${opts.reorder ? 'data-reorder="entry"' : ''}><button class="swipe-del" data-act="swipe-del" data-kind="entry" data-id="${e.id}">${ICON.trash}<span>Șterge</span></button>
+  return `<div class="swipe" data-swipe="entry" data-id="${e.id}" ${opts.reorder ? `data-reorder="${opts.reorder === 'shop' ? 'shop' : 'entry'}"` : ''}><button class="swipe-del" data-act="swipe-del" data-kind="entry" data-id="${e.id}">${ICON.trash}<span>Șterge</span></button>
   <div class="row swipe-content ${e.done ? 'done' : ''}" data-act="open" data-id="${e.id}">
     <button class="check ${e.done ? 'on' : ''}" style="--c:${col}" data-act="toggle" data-id="${e.id}" aria-label="Bifează">${ICON.check}</button>
     <div class="rbody">
@@ -483,7 +660,9 @@ function sectionsHtml(sections, opts) {
     ${s.title ? `<div class="sec-title ${s.id === 'overdue' ? 'red' : ''}">${esc(s.title)}</div>` : '<div style="height:14px"></div>'}
     <div class="group">${s.items.map(e => rowHtml(e, opts)).join('')}</div>`).join('');
 }
-const tile = (label, value, color) => `<div class="tile" style="--tc:${color}"><div class="tl">${esc(label)}</div><div class="tv">${esc(value)}</div></div>`;
+const tile = (label, value, color, f) => f
+  ? `<button class="tile" style="--tc:${color}" data-act="tile-filter" data-f="${f}"><div class="tl">${esc(label)}</div><div class="tv">${esc(value)}</div></button>`
+  : `<div class="tile" style="--tc:${color}"><div class="tl">${esc(label)}</div><div class="tv">${esc(value)}</div></div>`;
 
 // ---------- screens ----------
 function screenToday() {
@@ -504,8 +683,7 @@ function screenToday() {
   const install = !isStandalone() ? `<div class="banner"><b>📲 Pune MindMe pe ecranul telefonului</b>În Safari apasă <b style="display:inline">Partajează</b> (pătratul cu săgeată) → <b style="display:inline">Adaugă pe ecranul principal</b>.</div>` : '';
   const sec = (title, items, cls) => items.length ? `<div class="sec-title ${cls}">${title}</div><div class="group">${items.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : '';
   return `
-    <div class="topbar"><div class="left">${brand()}</div><div class="right"><button class="iconbtn fill" data-act="new-pick">${ICON.plus}</button></div></div>
-    <h1>${esc(cap(fLong.format(new Date())))}</h1>
+    ${mainHead(cap(fLong.format(new Date())), `<button class="iconbtn fill" data-act="new-pick">${ICON.plus}</button>`)}
     ${install}
     <div class="tiles three">
       ${tile('Întârziate', ov.length, ov.length ? 'var(--red)' : 'var(--muted)')}
@@ -536,6 +714,7 @@ function screenLists() {
     let sub = active.length ? `${active.length} ${active.length === 1 ? 'activ' : 'active'}` : 'Totul e bifat ✓';
     if (today) sub += ` · ${today} azi`;
     if (over) sub += ` · ${over} întârziat${over === 1 ? '' : 'e'}`;
+    if (c.kind === 'app') sub = appUrlOf(c) === 'birou.html' ?'Zile de birou pe lună, după reguli' : 'Sold, calendar și idei de punți';
     if (isMedCat(c)) {
       const running = items.filter(e => e.med && medStatus(e).state === 'active').length;
       const doses = dosesOn(new Date()).filter(x => x.e.cat === c.id);
@@ -556,11 +735,8 @@ function screenLists() {
     </div></div>`;
   }).join('');
   return `
-    <div class="topbar"><div class="left">${brand()}</div>
-      <div class="right"><button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button></div></div>
-    <h1>Liste</h1>
+    ${mainHead('Liste', `<button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button>`)}
     <div class="group">${rows || '<div class="empty">Nicio listă.</div>'}</div>
-    <div class="group mt"><button class="linkrow" data-act="cat-new">${ICON.plus} Listă nouă</button></div>
     <div class="footnote">Ține apăsat pe o listă și trage-o ca s-o muți. Glisează spre stânga pentru setări, spre dreapta pentru ștergere.</div>
     <div class="sec-title">Backup</div>
     <div class="group">
@@ -613,6 +789,8 @@ function categoryListHtml(c) {
 }
 function screenCategory(c) {
   if (isMedCat(c)) return screenMeds(c);
+  if (isShopCat(c)) return screenShopping(c);
+  if (c.kind === 'app') return screenApp(c);
   const all = db.entries.filter(e => e.cat === c.id);
   const active = all.filter(e => !e.done);
   const col = colorOf(c);
@@ -643,14 +821,13 @@ function screenCategory(c) {
 function screenReminders() {
   const list = db.entries.filter(e => e.hasReminder && catById(e.cat));
   const missed = list.filter(reminderMissed).sort((a, b) => parseLocal(b.reminder) - parseLocal(a.reminder));
-  const upcoming = list.filter(e => (!e.done || isRecent(e)) && !reminderMissed(e));
+  const upcoming = list.filter(e => (!e.done || isRecent(e)) && !reminderMissed(e) && nextReminder(e));
   const days = {};
   for (const e of upcoming) { const d = startOfDay(nextReminder(e)); (days[+d] ||= []).push(e); }
   const keys = Object.keys(days).map(Number).sort((a, b) => a - b);
   const notAdded = upcoming.filter(e => !alarmAdded(e)).length;
   return `
-    <div class="topbar"><div class="left">${brand()}</div><div class="right"><button class="iconbtn fill" data-act="new-pick" data-rem="1">${ICON.plus}</button></div></div>
-    <h1>Remindere</h1>
+    ${mainHead('Remindere', `<button class="iconbtn fill" data-act="new-pick" data-rem="1">${ICON.plus}</button>`)}
     ${notAdded ? `<div class="banner"><b>🔔 ${notAdded} ${notAdded === 1 ? 'reminder fără alarmă' : 'remindere fără alarmă'}</b>Apasă „+ Pune alarmă” ca să sune la ora aleasă, chiar dacă aplicația e închisă (se pune în Calendarul iPhone-ului).</div>` : ''}
     ${!missed.length && !keys.length ? `<div class="empty"><div class="big">🔔</div><b>Niciun reminder</b>Adaugă unul cu + sau pune „Amintește-mi” la orice element.</div>` : ''}
     ${missed.length ? `<div class="sec-title red">Trecute, nebifate</div><div class="group">${missed.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : ''}
@@ -660,18 +837,126 @@ const sortByRem = l => [...l].sort((a, b) => nextReminder(a) - nextReminder(b));
 
 function render() {
   const app = document.getElementById('app');
-  const y = window.scrollY;
+  // a mini-app is open: never rebuild it (it would reload and lose what you were doing)
+  const cur = ui.tab === 'lists' && ui.catId ? catById(ui.catId) : null;
+  document.body.classList.toggle('inapp', cur?.kind === 'app');
+  if (cur?.kind === 'app') {
+    const fr = document.getElementById('appframe');
+    if (fr && fr.dataset.cat === cur.id) { renderTabbar(); return; }
+  }
+  const y = scroller().scrollTop;
   let html;
   if (ui.tab === 'lists' && ui.catId && catById(ui.catId)) html = screenCategory(catById(ui.catId));
   else if (ui.tab === 'lists') { ui.catId = null; html = screenLists(); }
   else if (ui.tab === 'reminders') html = screenReminders();
   else if (ui.tab === 'stats') html = screenStats();
   else html = screenToday();
+  const isMain = !(ui.tab === 'lists' && ui.catId);
+  if (isMain) html += `</div><div class="searchlayer" id="slayer">${ui.searching ? searchLayerHtml() : ''}</div>`;
+  else ui.searching = false;
   app.innerHTML = html;
+  app.classList.toggle('searching', !!(isMain && ui.searching));
   openSwipeEl = null;
-  window.scrollTo(0, y);
+  scroller().scrollTo(0, ui.searching ? 0 : y);
   renderTabbar();
+  initSegs(app);
 }
+
+// ---------- main header: title + "+" on one row, full-width search bar below (like WhatsApp) ----------
+function mainHead(title, right) {
+  return `<div class="mainhead">
+    <div class="hrow"><h1>${esc(title)}</h1><div class="right">${right}</div></div>
+    <div class="sbar">
+      <label class="sfield">${ICON.search}<input id="gsearch" type="search" placeholder="Caută" autocomplete="off" autocorrect="off" enterkeyhint="search" value="${esc(ui.searchQ || '')}"></label>
+      <button class="scancel" data-act="search-cancel">Anulează</button>
+    </div>
+  </div><div class="screen-body">`;
+}
+
+// ---------- in-place search: suggestions, recent searches, lists ----------
+const SEARCH_FILTERS = [
+  { k: 'today', label: '📅 Azi', items: () => db.entries.filter(e => !e.med && !e.done && (isDueToday(e) || (e.hasReminder && nextReminder(e) && sameDay(nextReminder(e), new Date())))) },
+  { k: 'overdue', label: '⚠️ Întârziate', items: () => db.entries.filter(e => !e.med && !e.done && (isOverdue(e) || reminderMissed(e))) },
+  { k: 'meds', label: '💊 Medicamente azi', items: () => [...new Set(dosesOn(new Date()).map(x => x.e))] },
+  { k: 'unpaid', label: '💸 De plătit', items: () => moneyItems().filter(x => x.flow === 'toPay').map(x => x.e) },
+  { k: 'receive', label: '💰 De primit', items: () => moneyItems().filter(x => x.flow === 'toReceive').map(x => x.e) },
+  { k: 'partial', label: '📦 Parțial primite', items: () => db.entries.filter(e => !e.done && (e.subs || []).length && e.subs.some(s => s.done) && !e.subs.every(s => s.done)) },
+  { k: 'reminders', label: '🔔 Cu reminder', items: () => db.entries.filter(e => !e.med && !e.done && e.hasReminder) },
+  { k: 'recent', label: '✓ Bifate recent', items: () => db.entries.filter(e => e.done && e.doneAt && Date.now() - e.doneAt < 7 * 86400000) },
+];
+const recents = () => (db.settings ||= {}).recent ||= [];
+function addRecent(q) {
+  q = (q || '').trim();
+  if (q.length < 2) return;
+  const r = recents();
+  const i = r.findIndex(x => norm(x) === norm(q));
+  if (i >= 0) r.splice(i, 1);
+  r.unshift(q);
+  r.length = Math.min(r.length, 8);
+  save();
+}
+function resultsByList(items) {
+  let html = '';
+  let i = 0;
+  for (const c of cats()) {
+    const list = items.filter(e => e.cat === c.id);
+    if (!list.length) continue;
+    html += `<div class="sl-in" style="--i:${i++}"><div class="sec-title">${c.icon} ${esc(c.name)} · ${list.length}</div>
+      <div class="group">${sortEntries(list).map(e => rowHtml(e, {})).join('')}</div></div>`;
+  }
+  return html;
+}
+function searchLayerHtml() {
+  const q = (ui.searchQ || '').trim();
+  if (ui.searchFilter) {
+    const f = SEARCH_FILTERS.find(x => x.k === ui.searchFilter) || STAT_FILTERS[ui.searchFilter];
+    const items = f ? f.items() : [];
+    return `<div class="sl-in"><button class="sl-active" data-act="filter-clear">${esc(f?.label || '')} <span>✕</span></button></div>
+      ${items.length ? resultsByList(items) : `<div class="empty sl-in"><div class="big">✨</div><b>Nimic aici</b>Nu ai elemente pentru „${esc(f?.label || '')}”.</div>`}`;
+  }
+  if (q) return searchResultsHtml(q);
+  const chips = SEARCH_FILTERS.map(f => ({ f, n: f.items().length })).filter(x => x.n);
+  const r = recents();
+  let i = 0;
+  return `
+    ${chips.length ? `<div class="sl-in" style="--i:${i++}"><div class="sl-title">Sugestii</div>
+      <div class="sl-chips">${chips.map(({ f, n }) => `<button data-act="sugg" data-v="${f.k}">${esc(f.label)} <b>${n}</b></button>`).join('')}</div></div>` : ''}
+    ${r.length ? `<div class="sl-in" style="--i:${i++}"><div class="sl-head"><span>Căutări recente</span><button data-act="recent-clear">Șterge tot</button></div>
+      <div class="group">${r.map((t, k) => `<div class="sl-recent" data-act="recent" data-v="${esc(t)}">
+        <span class="sl-ico">🕘</span><span class="sl-txt">${esc(t)}</span>
+        <button class="sl-x" data-act="recent-del" data-i="${k}" aria-label="Șterge">✕</button></div>`).join('')}</div></div>` : ''}
+    <div class="sl-in" style="--i:${i++}"><div class="sl-title">Liste</div>
+      <div class="group">${cats().map(c => {
+        const n = db.entries.filter(e => e.cat === c.id && !e.done).length;
+        return `<div class="catrow" data-act="search-cat" data-id="${c.id}"><div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
+          <div style="flex:1"><div class="catname">${esc(c.name)}</div></div>${n ? `<span class="badge" style="--c:${colorOf(c)}">${n}</span>` : ''}<span class="chev">${ICON.chev}</span></div>`;
+      }).join('')}</div></div>`;
+}
+function updateSearchLayer() {
+  const l = document.getElementById('slayer');
+  if (l && ui.searching) l.innerHTML = searchLayerHtml();
+}
+function enterSearch() {
+  if (ui.searching) return;
+  ui.searching = true;
+  scroller().scrollTo(0, 0);
+  document.getElementById('app').classList.add('searching');
+  updateSearchLayer();
+}
+function exitSearch() {
+  ui.searching = false;
+  ui.searchQ = '';
+  ui.searchFilter = null;
+  const app = document.getElementById('app');
+  const inp = document.getElementById('gsearch');
+  if (inp) { inp.value = ''; inp.blur(); }
+  app.classList.remove('searching');
+  const body = app.querySelector('.screen-body');
+  if (body) { body.classList.remove('fadein'); void body.offsetWidth; body.classList.add('fadein'); }
+  document.getElementById('tabbar')?.classList.remove('compact');
+  setTimeout(() => { if (!ui.searching) { const l = document.getElementById('slayer'); if (l) l.innerHTML = ''; } }, 50);
+}
+document.addEventListener('focusin', ev => { if (ev.target.id === 'gsearch') enterSearch(); });
 // Bottom bar like WhatsApp: a "bubble" sits behind the selected tab and slides;
 // drag your finger along the bar and the bubble follows, let go to open that tab.
 const TABS = [['today', 'Azi', 'sun'], ['lists', 'Liste', 'grid'], ['reminders', 'Remindere', 'bell'], ['stats', 'Statistici', 'chart']];
@@ -708,10 +993,12 @@ function placePill(btn, x) {
   pill.style.transform = `translateX(${left}px)`;
 }
 function switchTab(id) {
-  if (ui.tab === id && !ui.catId) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  if (ui.tab === id && !ui.catId) { scroller().scrollTo({ top: 0, behavior: 'smooth' }); return; }
   ui.tab = id; ui.catId = null; ui.reorder = false; ui.search = '';
+  ui.searching = false; ui.searchQ = ''; ui.searchFilter = null;
+  document.getElementById('tabbar')?.classList.remove('compact');
   render();
-  window.scrollTo(0, 0);
+  scroller().scrollTo(0, 0);
 }
 let tabDrag = null;
 function tabAt(x) {
@@ -729,10 +1016,23 @@ document.addEventListener('pointerdown', ev => {
   bar.classList.remove('compact');
   placePill(tabDrag.over, ev.clientX);
   markOver(tabDrag.over);
+  magnify([...bar.querySelectorAll('button[data-tab]')], ev.clientX, 1.28, 1.25);
 });
 function markOver(btn) {
   document.querySelectorAll('#tabbar button[data-tab]').forEach(b => b.classList.toggle('over', b === btn));
 }
+// "magnifier" while your finger slides along a row of buttons: the one under the finger grows,
+// its neighbours a little less, the rest stay normal — changing smoothly with the distance
+function magnify(buttons, x, maxScale, reach) {
+  buttons.forEach(b => {
+    const r = b.getBoundingClientRect();
+    const dist = Math.abs(x - (r.left + r.width / 2));
+    const k = Math.max(0, 1 - dist / (r.width * reach));
+    const s = 1 + (maxScale - 1) * k * k * (3 - 2 * k);   // smooth curve
+    b.style.transform = s > 1.001 ? `scale(${s.toFixed(3)}) translateY(${(-(s - 1) * 14).toFixed(1)}px)` : '';
+  });
+}
+function unmagnify(buttons) { buttons.forEach(b => { b.style.transform = ''; }); }
 document.addEventListener('pointermove', ev => {
   if (!tabDrag || ev.pointerId !== tabDrag.id) return;
   if (Math.abs(ev.clientX - tabDrag.startX) > 6) tabDrag.moved = true;
@@ -740,6 +1040,7 @@ document.addEventListener('pointermove', ev => {
   if (over !== tabDrag.over) { tabDrag.over = over; try { navigator.vibrate?.(6); } catch (e) { /* ignore */ } }
   markOver(over);
   placePill(over, ev.clientX);
+  magnify([...document.querySelectorAll('#tabbar button[data-tab]')], ev.clientX, 1.28, 1.25);
 });
 function endTabDrag(ev) {
   if (!tabDrag || (ev && ev.pointerId !== tabDrag.id)) return;
@@ -748,6 +1049,7 @@ function endTabDrag(ev) {
   const bar = document.getElementById('tabbar');
   bar.classList.remove('dragging', 'pressing');
   markOver(null);
+  unmagnify([...bar.querySelectorAll('button[data-tab]')]);
   if (ev && ev.type === 'pointercancel') { renderTabbar(); return; }
   if (target) { placePill(target); switchTab(target.dataset.tab); }
 }
@@ -756,14 +1058,8 @@ document.addEventListener('pointercancel', endTabDrag);
 window.addEventListener('resize', () => { if (!tabDrag) placePill(document.querySelector(`#tabbar button[data-tab="${ui.tab}"]`)); });
 // scrolling down: the glass bar gets a little smaller; scrolling up or at the top: back to normal
 let lastScrollY = 0;
-window.addEventListener('scroll', () => {
-  const y = window.scrollY;
-  const bar = document.getElementById('tabbar');
-  if (!bar || tabDrag) { lastScrollY = y; return; }
-  if (y < 40 || y < lastScrollY - 6) bar.classList.remove('compact');
-  else if (y > lastScrollY + 6) bar.classList.add('compact');
-  if (Math.abs(y - lastScrollY) > 6) lastScrollY = y;
-}, { passive: true });
+// (the bar no longer shrinks while scrolling: content now stops right above it)
+function scroller() { return document.getElementById('app'); }
 
 // ---------- entry editor ----------
 function newDraft(c) {
@@ -775,11 +1071,18 @@ function newDraft(c) {
     hasAmount: c.usesAmount && !c.usesPaid, amountText: '', currency: c.currency || 'RON', paid: false, dir: 'out',
     vendor: '', tracking: '', priority: 0,
     hasReminder: c.reminderMode === 'always', reminder: toLocal(nextHour), repeat: 'none',
+    repInterval: 2, repEnd: 'never', repCount: 5, repUntil: dkey(addDays(new Date(), 7)), repDates: [], calMonth: dkey(new Date()).slice(0, 7),
     subs: [], remTouched: false,
   };
 }
 function draftFrom(e) {
-  return { ...clone(e), amountText: e.amount ? String(e.amount).replace('.', ',') : '', subs: clone(e.subs || []), remTouched: !!e.hasReminder };
+  const firstPicked = [...(e.repDates || [])].sort()[0];
+  return {
+    ...clone(e), amountText: e.amount ? String(e.amount).replace('.', ',') : '', subs: clone(e.subs || []), remTouched: !!e.hasReminder,
+    repInterval: e.repInterval || 2, repEnd: e.repEnd || 'never', repCount: e.repCount || 5,
+    repUntil: e.repUntil || dkey(addDays(new Date(), 7)), repDates: [...(e.repDates || [])],
+    calMonth: (firstPicked || dkey(new Date())).slice(0, 7),
+  };
 }
 function openEntry(catId, entryId) {
   const c = catById(catId);
@@ -820,7 +1123,9 @@ function entrySheetHtml() {
   const { d, isNew } = ui.sheet;
   const c = catById(d.cat);
   const col = colorOf(c);
-  const groups = [...new Set(db.entries.filter(e => e.cat === c.id && e.group).map(e => e.group))].sort((a, b) => a.localeCompare(b, 'ro'));
+  const groups = isShopCat(c)
+    ? aisles().map(a => a[0])                       // shopping: pick the aisle
+    : [...new Set(db.entries.filter(e => e.cat === c.id && e.group).map(e => e.group))].sort((a, b) => a.localeCompare(b, 'ro'));
   const parts = [];
 
   parts.push(`<div class="form">
@@ -838,14 +1143,48 @@ function entrySheetHtml() {
     const past = on && d.repeat === 'none' && parseLocal(d.reminder) < new Date();
     let h = `<div class="fhead">Reminder</div><div class="form">`;
     if (c.reminderMode === 'optional') h += `<div class="field"><span class="ico">🔔</span><span class="lbl">Amintește-mi</span>${sw('hasReminder', d.hasReminder)}</div>`;
+    const rep = d.repeat && d.repeat !== 'none';
     if (on) {
-      h += `<div class="field"><span class="lbl">Când</span><input type="datetime-local" data-bind="reminder" value="${esc(d.reminder)}"></div>
-        <div class="field"><span class="ico">🔁</span><span class="lbl">Repetă</span><select data-bind="repeat">${Object.entries(REPEATS).map(([k, v]) => `<option value="${k}" ${d.repeat === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-        <div class="quick">${quickOptions(d, c).map(([l, dt]) => `<button data-act="quick" data-v="${toLocal(dt)}">${l}</button>`).join('')}</div>`;
+      h += (d.repeat === 'dates'
+        ? `<div class="field"><span class="lbl">La ora</span><input type="time" data-bind="remTime" value="${esc(d.reminder.split('T')[1] || '09:00')}"></div>`
+        : `<div class="field"><span class="lbl">Când</span><input type="datetime-local" data-bind="reminder" value="${esc(d.reminder)}"></div>`) + `
+        <div class="field"><span class="ico">🔁</span><span class="lbl">Repetă</span><select data-bind="repeat">${Object.entries(REPEATS).map(([k, v]) => `<option value="${k}" ${d.repeat === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>`;
+      if (d.repeat === 'custom') {
+        h += `<div class="field"><span class="lbl">La fiecare ${d.repInterval} ${+d.repInterval === 1 ? 'zi' : 'zile'}</span>
+          <div class="order-btns"><button data-act="r-int" data-v="-1">−</button><button data-act="r-int" data-v="1">+</button></div></div>`;
+      }
+      if (d.repeat === 'dates') {
+        h += `<div class="fieldcol">${calPickerHtml(d)}</div>`;
+      } else if (rep) {
+        h += `<div class="fieldcol"><div class="lbl" style="font-size:14px;color:var(--muted);margin-bottom:6px">Se oprește</div>
+          <div class="segin" style="margin:0">
+            <button class="${d.repEnd === 'never' ? 'on' : ''}" data-act="r-end" data-v="never">Niciodată</button>
+            <button class="${d.repEnd === 'count' ? 'on' : ''}" data-act="r-end" data-v="count">După nr. de ori</button>
+            <button class="${d.repEnd === 'until' ? 'on' : ''}" data-act="r-end" data-v="until">La o dată</button></div></div>`;
+        if (d.repEnd === 'count') {
+          h += `<div class="field"><span class="lbl">De ${d.repCount} ${+d.repCount === 1 ? 'dată' : 'ori'}</span>
+            <div class="order-btns"><button data-act="r-count" data-v="-1">−</button><button data-act="r-count" data-v="1">+</button></div></div>
+            <div class="quick">${[3, 5, 7, 10, 14, 30].map(n => `<button data-act="r-countset" data-v="${n}">${n} ori</button>`).join('')}</div>`;
+        }
+        if (d.repEnd === 'until') h += `<div class="field"><span class="lbl">Ultima zi</span><input type="date" data-bind="repUntil" value="${esc(d.repUntil)}"></div>`;
+      }
+      h += `<div class="quick">
+          <button data-act="r-preset" data-v="5">🔁 5 zile la rând</button><button data-act="r-preset" data-v="7">🔁 7 zile la rând</button>
+          ${quickOptions(d, c).map(([l, dt]) => `<button data-act="quick" data-v="${toLocal(dt)}">${l}</button>`).join('')}</div>`;
     }
     h += `</div>`;
     if (past) h += `<div class="ffoot orange">Ora aleasă a trecut deja — alege una din viitor.</div>`;
-    else if (on) h += `<div class="ffoot">Când apeși „Salvează”, se deschide Calendarul: apasă „Adaugă” și alarma sună la ora asta, chiar dacă aplicația e închisă.</div>`;
+    else if (on) {
+      let sum = '';
+      if (d.repeat === 'dates') {
+        const n = d.repDates.length;
+        sum = n ? `Reminder în ${n} ${n === 1 ? 'zi' : 'zile'}, la ora ${(d.reminder.split('T')[1] || '')}. ` : 'Apasă pe zilele în care vrei reminderul. ';
+      } else if (rep) {
+        const last = remLast({ ...d });
+        sum = last ? `Ultimul reminder: ${fLong.format(last)}, ${fTime.format(last)}. ` : 'Se repetă fără oprire. ';
+      }
+      h += `<div class="ffoot" id="remsum">${esc(sum)}La „Salvează” se deschide Calendarul: apeși „Adaugă” și alarma sună chiar dacă aplicația e închisă.</div>`;
+    }
     return h;
   };
 
@@ -887,7 +1226,7 @@ function entrySheetHtml() {
     let h = `<div class="form" style="margin-top:18px">`;
     if (c.usesPriority) h += `<div class="field"><span class="ico">🚩</span><span class="lbl">Prioritate</span><select data-bind="priority">${PRIORITIES.map((p, i) => `<option value="${i}" ${+d.priority === i ? 'selected' : ''}>${p}</option>`).join('')}</select></div>`;
     if (c.usesGroups) {
-      h += `<div class="field"><span class="ico">📁</span><input type="text" data-bind="group" list="grouplist" placeholder="Grup (ex: Casă, Muncă)" value="${esc(d.group)}">
+      h += `<div class="field"><span class="ico">📁</span><input type="text" data-bind="group" list="grouplist" placeholder="${isShopCat(c) ? 'Raion' : 'Grup (ex: Casă, Muncă)'}" value="${esc(d.group)}">
         <datalist id="grouplist">${groups.map(g => `<option value="${esc(g)}">`).join('')}</datalist></div>`;
       if (groups.length) h += `<div class="quick" style="--pink:var(--purple)">${groups.map(g => `<button data-act="pickgroup" data-v="${esc(g)}">${esc(g)}</button>`).join('')}</div>`;
     }
@@ -941,6 +1280,8 @@ function saveEntry(withAlarm) {
   const d = s.d;
   if (!d.title.trim()) return;
   const c = catById(d.cat);
+  const remOn = c.reminderMode === 'always' || (c.reminderMode === 'optional' && d.hasReminder);
+  if (remOn && d.repeat === 'dates' && !d.repDates.length) { toast('Alege în calendar cel puțin o zi'); return; }
   let e = d.id ? entryById(d.id) : null;
   if (!e) { e = { id: uid(), createdAt: Date.now() }; db.entries.push(e); }
   const amount = parseAmount(d.amountText);
@@ -949,7 +1290,7 @@ function saveEntry(withAlarm) {
     cat: c.id,
     title: d.title.trim(),
     details: d.details.trim(),
-    group: c.usesGroups ? d.group.trim() : (e.group || ''),
+    group: c.usesGroups ? (d.group.trim() || (isShopCat(c) ? guessAisle(d.title) : '')) : (e.group || ''),
     done: d.done,
     hasDeadline: c.usesDeadline && d.hasDeadline,
     deadline: d.deadline,
@@ -960,7 +1301,12 @@ function saveEntry(withAlarm) {
     vendor: d.vendor.trim(), tracking: d.tracking.trim(),
     priority: c.usesPriority ? +d.priority : 0,
     hasReminder: c.reminderMode === 'always' ? true : c.reminderMode === 'off' ? false : !!d.hasReminder,
-    reminder: d.reminder, repeat: d.repeat || 'none',
+    reminder: d.repeat === 'dates' && d.repDates.length
+      ? [...d.repDates].sort()[0] + 'T' + (d.reminder.split('T')[1] || '09:00')
+      : d.reminder,
+    repeat: d.repeat || 'none',
+    repInterval: Math.max(1, +d.repInterval || 1), repEnd: d.repEnd || 'never', repCount: Math.max(1, +d.repCount || 1),
+    repUntil: d.repUntil, repDates: [...new Set(d.repDates || [])].sort(),
     subs: d.subs.filter(x => x.title.trim()).map(x => ({ id: x.id, title: x.title.trim(), done: !!x.done })),
     alarmFor: d.alarmFor || e.alarmFor || null,
   });
@@ -999,8 +1345,10 @@ function categorySheetHtml() {
 
       <div class="form" style="margin-top:14px"><div class="field"><span class="ico">🪄</span><span class="lbl">Copiază regulile de la</span>
         <select data-act-change="c-template"><option value="">alege…</option>${Object.entries(TEMPLATES).map(([k, t]) => `<option value="${k}">${t.icon} ${t.label}</option>`).join('')}</select></div></div>
-      <div class="ffoot">${d.kind === 'meds' ? 'Asta e o listă de medicamente: are câmpurile ei (doză, ore, zile, durata tratamentului).' : 'Ex: alege „Comenzi” ca să ai sumă, plătit/neplătit, AWB și produse; „Medicamente” pentru tratamente.'}</div>
-      ${d.kind === 'meds' ? '' : `
+      <div class="ffoot">${d.kind === 'meds' ? 'Asta e o listă de medicamente: are câmpurile ei (doză, ore, zile, durata tratamentului).'
+        : d.kind === 'app' ? 'Asta e o aplicație din MindMe (concediu / zile la birou): are setările ei, în interior.'
+        : 'Ex: alege „Comenzi” ca să ai sumă, plătit/neplătit, AWB și produse; „Medicamente” pentru tratamente.'}</div>
+      ${d.kind === 'meds' || d.kind === 'app' ? '' : `
 
       <div class="fhead">Ce câmpuri au elementele</div>
       <div class="form">
@@ -1167,7 +1515,8 @@ function statsHtml() {
         <div class="readout"><b>${esc(cap(fMonthLong.format(sel.d)))}</b><span>${esc(money(sel.sum, cur))} · ${nItems(sel.n)}</span></div>
         <div class="bars">${bars}</div>
       </div>
-      <div class="ffoot">Apasă pe o lună ca să vezi suma.${other.length ? ` Sumele în altă monedă (${esc(totals(other.map(e => [e.amount, e.currency])))}) nu apar în grafic.` : ''}</div>
+      <div class="ffoot">Apasă sau glisează peste luni ca să vezi ce e în ele.${other.length ? ` Sumele în altă monedă (${esc(totals(other.map(e => [e.amount, e.currency])))}) nu apar în grafic.` : ''}</div>
+      ${monthListHtml(sel, main.filter(e => monthKey(itemDate(e, c)) === sel.key), c.name)}
       ${vendorsHtml}
       <div class="fhead">Pe scurt</div>
       <div class="form">
@@ -1198,17 +1547,11 @@ function searchResultsHtml(raw) {
   if (!hits.length && !listHits.length) return `<div class="empty"><div class="big">🤷</div><b>Nimic găsit</b>Nu am găsit nimic pentru „${esc(raw.trim())}”.</div>`;
   let html = '';
   if (listHits.length) {
-    html += `<div class="sec-title">Liste</div><div class="group">${listHits.map(c => `
+    html += `<div class="sl-in"><div class="sec-title">Liste</div><div class="group">${listHits.map(c => `
       <div class="catrow" data-act="search-cat" data-id="${c.id}"><div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
-      <div style="flex:1"><div class="catname">${esc(c.name)}</div></div><span class="chev">${ICON.chev}</span></div>`).join('')}</div>`;
+      <div style="flex:1"><div class="catname">${esc(c.name)}</div></div><span class="chev">${ICON.chev}</span></div>`).join('')}</div></div>`;
   }
-  for (const c of cats()) {
-    const items = hits.filter(e => e.cat === c.id);
-    if (!items.length) continue;
-    html += `<div class="sec-title">${c.icon} ${esc(c.name)} · ${items.length}</div>
-      <div class="group">${sortEntries(items).map(e => rowHtml(e, {})).join('')}</div>`;
-  }
-  return html;
+  return html + resultsByList(hits);
 }
 function searchSheetHtml() {
   const s = ui.sheet;
@@ -1224,6 +1567,144 @@ function searchSheetHtml() {
 function refreshSearch() {
   const box = document.getElementById('gresults');
   if (box && ui.sheet?.type === 'search') box.innerHTML = searchResultsHtml(ui.sheet.q);
+}
+
+// ---------- mini-apps inside MindMe (Zile de concediu, Zile la birou) ----------
+// the mini-apps are single files now (easy to upload); old saved lists still point to the folder names
+const appUrlOf = c => ({ 'concediu/': 'concediu.html', 'birou/': 'birou.html' }[c.appUrl] || c.appUrl);
+// same header as every other list; the mini-app fills the rest of the screen and MindMe's
+// bottom bar stays on top of it, so it feels like one app
+function screenApp(c) {
+  return `<div class="appview">
+    <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div><div class="right"></div></div>
+    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    <iframe id="appframe" data-cat="${c.id}" src="${esc(appUrlOf(c))}" title="${esc(c.name)}"></iframe>
+  </div>`;
+}
+
+// ---------- shopping list ----------
+const isShopCat = c => c?.kind === 'shopping';
+// suggestions while typing: what you bought before + the product catalog, best matches first
+function shopSuggestions(c, q) {
+  const qn = norm(q).trim();
+  if (!qn) return [];
+  const active = new Set(db.entries.filter(e => e.cat === c.id && !e.done).map(e => norm(e.title)));
+  const seen = new Set();
+  const out = [];
+  const consider = (name, aisle, bonus) => {
+    const n = norm(name);
+    if (seen.has(n) || active.has(n)) return;
+    let s = 0;
+    if (n === qn) s = 100;
+    else if (n.startsWith(qn)) s = 60;
+    else if (n.split(/\s+/).some(w => w.startsWith(qn))) s = 40;
+    else if (qn.length >= 3 && n.includes(qn)) s = 20;
+    if (!s) return;
+    seen.add(n);
+    out.push({ name, aisle: aisle || guessAisle(name), s: s + bonus - n.length * 0.1 });
+  };
+  Object.values(c.history || {}).forEach(h => consider(h.name, guessAisle(h.name), 15 + Math.min(10, h.n)));
+  catalog().forEach(p => consider(p.name, p.aisle, 0));
+  out.sort((a, b) => b.s - a.s);
+  return out.slice(0, 6);
+}
+function shopSuggestHtml(c, q) {
+  const raw = q.trim();
+  if (!raw) return '';
+  const list = shopSuggestions(c, raw);
+  const typed = raw.charAt(0).toUpperCase() + raw.slice(1);
+  const exact = list.some(x => norm(x.name) === norm(raw));
+  const rows = list.map(x => `<button data-act="qa-pick" data-id="${c.id}" data-v="${esc(x.name)}" data-g="${esc(x.aisle)}">
+      <span class="qs-ico">${aisleIcon(x.aisle)}</span><span class="qs-name">${esc(x.name)}</span><span class="qs-aisle">${esc(x.aisle)}</span></button>`);
+  if (!exact && !raw.includes(',')) {
+    const g = guessAisle(raw);
+    rows.push(`<button data-act="qa-pick" data-id="${c.id}" data-v="${esc(typed)}" data-g="${esc(g)}">
+      <span class="qs-ico">＋</span><span class="qs-name">Adaugă „${esc(typed)}”</span><span class="qs-aisle">${aisleIcon(g)} ${esc(g)}</span></button>`);
+  }
+  return rows.join('');
+}
+
+function shopAdd(c, text, forcedGroup) {
+  const names = String(text || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+  let added = 0, dup = 0;
+  for (const raw of names) {
+    const title = raw.charAt(0).toUpperCase() + raw.slice(1);
+    if (db.entries.some(e => e.cat === c.id && !e.done && norm(e.title) === norm(title))) { dup++; continue; }
+    const now = new Date();
+    db.entries.push({
+      id: uid(), createdAt: Date.now(), cat: c.id, title, details: '', group: (names.length === 1 && forcedGroup) || guessAisle(title), done: false, doneAt: null,
+      hasDeadline: false, deadline: toLocal(now), deadlineTime: false, hasAmount: false, amount: 0, currency: c.currency || 'RON',
+      paid: false, dir: 'out', vendor: '', tracking: '', priority: 0, hasReminder: false, reminder: toLocal(now), repeat: 'none', subs: [],
+    });
+    const h = (c.history ||= {});
+    const k = norm(title);
+    h[k] = { name: title, n: (h[k]?.n || 0) + 1, last: Date.now() };
+    added++;
+  }
+  if (added || dup) save();
+  if (dup && !added) toast('E deja pe listă');
+  return added;
+}
+function screenShopping(c) {
+  const col = colorOf(c);
+  const items = db.entries.filter(e => e.cat === c.id);
+  const active = items.filter(e => !settledDone(e));
+  const cart = items.filter(settledDone);
+  const order = aisles().map(a => a[0]);
+  const by = {};
+  active.forEach(e => { (by[e.group || 'Altele'] ||= []).push(e); });
+  const groups = [...order.filter(g => by[g]), ...Object.keys(by).filter(g => !order.includes(g)).sort((a, b) => a.localeCompare(b, 'ro'))];
+  const activeNames = new Set(active.map(e => norm(e.title)));
+  const freq = Object.values(c.history || {}).filter(h => !activeNames.has(norm(h.name)))
+    .sort((a, b) => b.n - a.n || b.last - a.last).slice(0, 14);
+  const total = active.length + cart.length;
+  return `
+    <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
+      <div class="right"><button class="iconbtn" data-act="cat-menu" data-id="${c.id}">${ICON.more}</button></div></div>
+    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    <div class="quickadd" style="--c:${col}">
+      <button class="qa-plus" data-act="qa-add" data-id="${c.id}" aria-label="Adaugă">${ICON.plus}</button>
+      <input id="quickadd" type="text" placeholder="Adaugă produs (ex: lapte Zuzu, Snickers)" autocomplete="off" autocorrect="off" enterkeyhint="done" data-cat="${c.id}">
+    </div>
+    <div id="qasugg" class="qa-sugg"></div>
+    ${freq.length ? `<div class="sl-title" style="margin:14px 4px 8px">Cumpărate des · atinge ca să adaugi</div>
+      <div class="quick qa-freq" style="--pink:${col};padding:0 0 4px">${freq.map(h => `<button data-act="qa-again" data-id="${c.id}" data-v="${esc(h.name)}">＋ ${esc(h.name)}</button>`).join('')}</div>` : ''}
+    ${total ? `<div class="medtoday" style="--c:${col};margin-top:14px">
+        <div><div class="mt-l">În coș</div><div class="mt-v">${cart.length} din ${total}</div></div>
+        <div class="mt-bar"><span style="width:${Math.round(cart.length / total * 100)}%"></span></div></div>` : ''}
+    ${!total ? `<div class="empty"><div class="big">🛒</div><b>Lista e goală</b>Scrie ce ai de luat mai sus și apasă Enter. Produsele se așază singure pe raioane.</div>` : ''}
+    ${!active.length && cart.length ? `<div class="banner" style="margin-top:12px"><b>Gata, ai luat tot! 🎉</b>Golește coșul când ajungi acasă.</div>` : ''}
+    ${groups.map(g => `<div class="sec-title">${aisleIcon(g)} ${esc(g)} · ${by[g].length}</div>
+      <div class="group">${sortManual(by[g]).map(e => rowHtml(e, { showGroup: false, reorder: 'shop' })).join('')}</div>`).join('')}
+    ${cart.length ? `<div class="sl-head" style="margin-top:26px"><span>🛒 În coș · ${cart.length}</span><button data-act="cart-clear" data-id="${c.id}">Golește coșul</button></div>
+      <div class="group">${cart.map(e => rowHtml(e, { showGroup: false })).join('')}</div>` : ''}
+    ${total ? `<div class="footnote">Bifează ce pui în coș. Ține apăsat pe un produs și trage-l ca să-l muți. Glisează spre dreapta ca să-l ștergi; apasă pe el ca să schimbi raionul.</div>` : ''}`;
+}
+
+// ---------- month calendar to pick several days (reminder "Zile alese din calendar") ----------
+function calPickerHtml(d) {
+  const [y, m] = (d.calMonth || dkey(new Date()).slice(0, 7)).split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const offset = (first.getDay() + 6) % 7;            // Monday first
+  const daysIn = new Date(y, m, 0).getDate();
+  const today = startOfDay(new Date());
+  const thisMonth = today.getFullYear() === y && today.getMonth() === m - 1;
+  let cells = '';
+  for (let i = 0; i < offset; i++) cells += '<span></span>';
+  for (let day = 1; day <= daysIn; day++) {
+    const k = `${y}-${pad(m)}-${pad(day)}`;
+    const date = new Date(y, m - 1, day);
+    const past = date < today;
+    const on = d.repDates.includes(k);
+    cells += `<button class="${on ? 'on' : ''} ${sameDay(date, today) ? 'today' : ''}" ${past ? 'disabled' : `data-act="cal-day" data-v="${k}"`}>${day}</button>`;
+  }
+  const title = cap(new Intl.DateTimeFormat('ro-RO', { month: 'long', year: 'numeric' }).format(first));
+  return `<div class="calpick">
+    <div class="cal-head"><button data-act="cal-nav" data-v="-1" ${thisMonth ? 'disabled' : ''}>${ICON.back}</button><b>${esc(title)}</b><button data-act="cal-nav" data-v="1"><span style="display:inline-block;transform:scaleX(-1)">${ICON.back}</span></button></div>
+    <div class="cal-grid cal-wd">${['L', 'Ma', 'Mi', 'J', 'V', 'S', 'D'].map(w => `<span>${w}</span>`).join('')}</div>
+    <div class="cal-grid">${cells}</div>
+    ${d.repDates.length ? `<div class="cal-foot"><span>${d.repDates.length} ${d.repDates.length === 1 ? 'zi aleasă' : 'zile alese'}</span><button data-act="cal-clear">Șterge alegerea</button></div>` : ''}
+  </div>`;
 }
 
 // ---------- medicines ----------
@@ -1384,7 +1865,7 @@ function openMed(catId, entryId) {
       id: e?.id || null, cat: catId, title: e?.title || '', details: e?.details || '', done: !!e?.done,
       dose: m.dose || '', times: [...(m.times || ['08:00'])],
       start: m.start || dkey(today), durType: m.durType || 'days', days: m.days || 7,
-      until: m.until || dkey(addDays(today, 30)),
+      until: m.until || dkey(today),   // "Până la" opens on today's date, not a month ahead
       weekdaysOn: !!(m.weekdays && m.weekdays.length && m.weekdays.length < 7),
       weekdays: m.weekdays && m.weekdays.length ? [...m.weekdays] : [1, 2, 3, 4, 5, 6, 0],
       alarm: e ? !!m.alarm : true,
@@ -1544,14 +2025,35 @@ const hbarRow = (label, valueText, frac, color, sub) => `<div class="hbar"><div 
   <div class="hbar-track"><span style="width:${Math.max(frac > 0 ? 2 : 0, frac * 100)}%;background:${color}"></span></div>${sub ? `<div class="hbar-sub">${sub}</div>` : ''}</div>`;
 const WEEKDAYS = ['duminica', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
 
+// every medicine dose you checked as taken, from `start` on: { e, t, date }
+function doseEvents(start) {
+  const out = [];
+  for (const e of db.entries) {
+    if (!e.med || !catById(e.cat)) continue;
+    for (const [k, arr] of Object.entries(e.med.taken || {})) {
+      const day = dayOf(k);
+      if (!day || day < startOfDay(start)) continue;
+      for (const t of arr) { const [h, m] = t.split(':').map(Number); out.push({ e, t, date: atTime(day, h, m) }); }
+    }
+  }
+  return out.sort((a, b) => b.date - a.date);
+}
+function doseRowHtml(x) {
+  return `<div class="row" data-act="open" data-id="${x.e.id}">
+    <div class="medico" style="--c:${colorOf(catById(x.e.cat))}">💊</div>
+    <div class="rbody"><div class="rtitle">${esc(x.e.title)}</div><div class="chips">${x.e.med.dose ? chip(x.e.med.dose, 'var(--muted)') : ''}${chip('✓ luată', 'var(--green)')}</div></div>
+    <div class="dtime" style="color:var(--muted);text-align:right">${x.t}<div style="font-size:12px;font-weight:600">${esc(fmtDay(x.date))}</div></div></div>`;
+}
+
 function generalStatsHtml() {
   const s = ui.stats;
   const entries = db.entries.filter(e => catById(e.cat));
   if (!entries.length) return `<div class="empty"><div class="big">📊</div><b>Încă nu sunt date</b>Adaugă câteva lucruri în liste și aici vezi cum stai.</div>`;
   const { months, start } = rangeOf(s, entries.map(e => e.createdAt));
-  const active = entries.filter(e => !e.done);
+  const active = entries.filter(e => !e.done && !e.med);
   const overdueNow = active.filter(e => isOverdue(e) || reminderMissed(e)).length;
-  const done = entries.filter(e => e.done && e.doneAt && e.doneAt >= +start);
+  const done = entries.filter(e => e.done && !e.med && e.doneAt && e.doneAt >= +start);
+  const doses = doseEvents(start);            // medicine doses checked as taken count as "bifate" too
   const added = entries.filter(e => e.createdAt >= +start);
   const withDl = done.filter(e => e.hasDeadline && parseLocal(e.deadline));
   const onTime = withDl.filter(e => {
@@ -1561,18 +2063,19 @@ function generalStatsHtml() {
   const rate = withDl.length ? Math.round((onTime / withDl.length) * 100) + '%' : '–';
 
   const metric = s.act || 'done';
-  const src = metric === 'done' ? done.map(e => new Date(e.doneAt)) : added.map(e => new Date(e.createdAt));
+  const src = metric === 'done' ? [...done.map(e => new Date(e.doneAt)), ...doses.map(x => x.date)] : added.map(e => new Date(e.createdAt));
   const buckets = monthBuckets(months, start);
   const byKey = Object.fromEntries(buckets.map(b => [b.key, b]));
   src.forEach(d => { const b = byKey[monthKey(d)]; if (b) b.n++; });
   const sel = byKey[s.sel] || buckets[buckets.length - 1];
 
   // per list
-  const per = cats().map(c => ({ c, n: done.filter(e => e.cat === c.id).length })).filter(x => x.n).sort((a, b) => b.n - a.n);
+  const per = cats().map(c => ({ c, n: done.filter(e => e.cat === c.id).length + doses.filter(x => x.e.cat === c.id).length })).filter(x => x.n).sort((a, b) => b.n - a.n);
   const pmax = per.length ? per[0].n : 0;
   // best weekday
   const wd = [0, 0, 0, 0, 0, 0, 0];
   done.forEach(e => { wd[new Date(e.doneAt).getDay()]++; });
+  doses.forEach(x => { wd[x.date.getDay()]++; });
   const best = Math.max(...wd);
   // reminders
   const rem = entries.filter(e => e.hasReminder);
@@ -1582,10 +2085,10 @@ function generalStatsHtml() {
 
   return `
     <div class="tiles">
-      ${tile('Active acum', active.length, 'var(--accent)')}
-      ${tile('Întârziate acum', overdueNow, overdueNow ? 'var(--red)' : 'var(--muted)')}
-      ${tile('Bifate', done.length, 'var(--green)')}
-      ${tile('Gata la timp', rate, 'var(--blue)')}
+      ${tile('Active acum', active.length, 'var(--accent)', 'st-active')}
+      ${tile('Întârziate acum', overdueNow, overdueNow ? 'var(--red)' : 'var(--muted)', 'st-overdue')}
+      ${tile('Bifate', done.length + doses.length, 'var(--green)', 'st-done')}
+      ${tile('Gata la timp', rate, 'var(--blue)', 'st-ontime')}
     </div>
     <div class="segin" style="margin-top:20px">
       <button class="${metric === 'done' ? 'on' : ''}" data-act="stat-metric" data-v="done">✓ Bifate</button>
@@ -1595,17 +2098,22 @@ function generalStatsHtml() {
       <div class="readout"><b>${esc(cap(fMonthLong.format(sel.d)))}</b><span>${nItems(sel.n)}</span></div>
       <div class="bars">${barsHtml(buckets, sel.key, metric === 'done' ? '#2EB87A' : '#7C5CFA', 'stat-sel', b => b.n)}</div>
     </div>
-    <div class="ffoot">${metric === 'done' ? 'Câte ai bifat' : 'Câte ai adăugat'} în fiecare lună. Apasă pe o lună ca să vezi numărul.</div>
+    <div class="ffoot">${metric === 'done' ? 'Câte ai bifat' : 'Câte ai adăugat'} în fiecare lună. Apasă sau glisează peste luni ca să vezi ce e în ele.</div>
+    ${monthListHtml(sel,
+      (metric === 'done' ? done.filter(e => monthKey(new Date(e.doneAt)) === sel.key) : added.filter(e => monthKey(new Date(e.createdAt)) === sel.key)).filter(e => !e.med),
+      metric === 'done' ? 'Bifate' : 'Adăugate',
+      metric === 'done' ? doses.filter(x => monthKey(x.date) === sel.key) : [])}
     ${per.length ? `<div class="fhead">Bifate pe liste</div><div class="form">${per.map(x => hbarRow(`${x.c.icon} ${esc(x.c.name)}`, x.n, pmax ? x.n / pmax : 0, colorOf(x.c), '')).join('')}</div>` : ''}
     <div class="fhead">Remindere</div>
     <div class="tiles three">
-      ${tile('Programate', remUpcoming, 'var(--pink)')}
-      ${tile('Ratate', remMissed, remMissed ? 'var(--red)' : 'var(--muted)')}
-      ${tile('Repetate', remRepeat, 'var(--purple)')}
+      ${tile('Programate', remUpcoming, 'var(--pink)', 'st-remup')}
+      ${tile('Ratate', remMissed, remMissed ? 'var(--red)' : 'var(--muted)', 'st-remmiss')}
+      ${tile('Repetate', remRepeat, 'var(--purple)', 'st-remrep')}
     </div>
     ${best ? `<div class="fhead">Pe scurt</div><div class="form">
       <div class="field"><span class="lbl">Ziua în care bifezi cel mai mult</span><b>${cap(WEEKDAYS[wd.indexOf(best)])}</b></div>
       <div class="field"><span class="lbl">Adăugate în perioadă</span><b>${added.length}</b></div>
+      ${doses.length ? `<div class="field"><span class="lbl">Doze de medicamente luate</span><b>${doses.length}</b></div>` : ''}
       ${withDl.length ? `<div class="field"><span class="lbl">Cu termen, făcute la timp</span><b>${onTime} din ${withDl.length}</b></div>` : ''}
     </div>` : ''}`;
 }
@@ -1637,12 +2145,58 @@ function screenStats() {
   else if (s.view === 'liste') body = listsStatsHtml();
   else body = generalStatsHtml();
   return `
-    <div class="topbar"><div class="left">${brand()}</div><div class="right"></div></div>
-    <h1>Statistici</h1>
+    ${mainHead('Statistici', '')}
     <div class="seg" style="margin-top:0">${views.map(([k, l]) => `<button class="${s.view === k ? 'on' : ''}" data-act="stat-view" data-v="${k}">${l}</button>`).join('')}</div>
     ${s.view !== 'liste' ? `<div class="segin" style="margin:12px 0 14px">${[['6', '6 luni'], ['12', '12 luni'], ['all', 'Tot']].map(([k, l]) => `<button class="${s.range === k ? 'on' : ''}" data-act="stat-range" data-v="${k}">${l}</button>`).join('')}</div>` : '<div style="height:14px"></div>'}
     ${body}`;
 }
+
+// items of the selected month, under a chart: one row per list (with how many), tap to expand it
+const accOpen = new Set();
+function monthListHtml(sel, items, word, doses = []) {
+  const month = cap(fMonthLong.format(sel.d));
+  const total = items.length + doses.length;
+  if (!total) return `<div class="fhead">${esc(month)}</div><div class="footnote" style="margin-top:0">Nimic în luna asta.</div>`;
+  const blocks = cats().map(c => {
+    const list = items.filter(e => e.cat === c.id);
+    const ds = doses.filter(x => x.e.cat === c.id);
+    const n = list.length + ds.length;
+    if (!n) return '';
+    const key = `${sel.key}:${c.id}`;
+    const count = ds.length && !list.length ? `${ds.length} ${ds.length === 1 ? 'doză' : 'doze'}` : n;
+    return `<div class="acc ${accOpen.has(key) ? 'open' : ''}">
+      <button class="acc-head" data-act="acc" data-k="${key}">
+        <span class="caticon" style="--c:${colorOf(c)};width:32px;height:32px;font-size:17px;border-radius:9px">${c.icon}</span>
+        <span class="acc-name">${esc(c.name)}</span><b class="acc-n" style="--c:${colorOf(c)}">${count}</b><span class="acc-chev">${ICON.chev}</span>
+      </button>
+      <div class="acc-body"><div class="acc-inner">${sortEntries(list).map(e => rowHtml(e, {})).join('')}${ds.map(doseRowHtml).join('')}</div></div>
+    </div>`;
+  }).join('');
+  return `<div class="fhead">${esc(word)} în ${esc(month.toLowerCase())} · ${nItems(total)}</div><div class="group accs">${blocks}</div>
+    <div class="footnote">Apasă pe o listă ca s-o desfaci.</div>`;
+}
+
+// tiles in "Statistici" that open the matching items (shown in the search view, with a ✕ to go back)
+function statStart() { return rangeOf(ui.stats, db.entries.map(e => e.createdAt)).start; }
+function moneyStart() { return rangeOf(ui.stats, moneyItems().map(x => +x.date)).start; }
+const STAT_FILTERS = {
+  'st-active': { label: 'Active acum', items: () => db.entries.filter(e => !e.done && !e.med && catById(e.cat)) },
+  'st-overdue': { label: 'Întârziate acum', items: () => db.entries.filter(e => !e.done && !e.med && (isOverdue(e) || reminderMissed(e))) },
+  'st-done': { label: 'Bifate în perioadă', items: () => {
+    const st = statStart();
+    const meds = [...new Set(doseEvents(st).map(x => x.e))];
+    return [...db.entries.filter(e => e.done && !e.med && e.doneAt >= +st), ...meds];
+  } },
+  'st-ontime': { label: 'Cu termen, bifate', items: () => db.entries.filter(e => e.done && !e.med && e.hasDeadline && e.doneAt >= +statStart()) },
+  'st-remup': { label: 'Remindere programate', items: () => db.entries.filter(e => e.hasReminder && !e.done && !reminderMissed(e)) },
+  'st-remmiss': { label: 'Remindere ratate', items: () => db.entries.filter(reminderMissed) },
+  'st-remrep': { label: 'Remindere repetate', items: () => db.entries.filter(e => e.hasReminder && !e.done && e.repeat && e.repeat !== 'none') },
+  'mo-spent': { label: 'Cheltuit', items: () => moneyItems().filter(x => x.flow === 'spent' && x.date >= moneyStart()).map(x => x.e) },
+  'mo-received': { label: 'Primit', items: () => moneyItems().filter(x => x.flow === 'received' && x.date >= moneyStart()).map(x => x.e) },
+  'mo-all': { label: 'Tranzacții', items: () => moneyItems().filter(x => (x.flow === 'spent' || x.flow === 'received') && x.date >= moneyStart()).map(x => x.e) },
+  'mo-topay': { label: 'De plătit', items: () => moneyItems().filter(x => x.flow === 'toPay').map(x => x.e) },
+  'mo-toreceive': { label: 'De primit', items: () => moneyItems().filter(x => x.flow === 'toReceive').map(x => x.e) },
+};
 
 // ---------- money overview across all lists ----------
 // spent    = payments marked as paid ("de plătit" + bifat), orders marked "Plătit", other money items checked
@@ -1733,17 +2287,17 @@ function moneyStatsHtml() {
   return `
       ${!all.length ? `<div class="empty"><div class="big">💰</div><b>Încă nu sunt sume</b>Adaugă plăți sau comenzi cu sumă și aici vezi cât ai cheltuit și cât ai primit.</div>` : `
       <div class="tiles">
-        ${tile('Cheltuit', totals(pairs(spent)), 'var(--red)')}
-        ${tile('Primit', totals(pairs(received)), 'var(--green)')}
+        ${tile('Cheltuit', totals(pairs(spent)), 'var(--red)', 'mo-spent')}
+        ${tile('Primit', totals(pairs(received)), 'var(--green)', 'mo-received')}
       </div>
       <div class="tiles" style="margin-top:10px">
         ${tile('Diferență', (diff > 0 ? '+' : diff < 0 ? '−' : '') + money(Math.abs(diff), cur), diff >= 0 ? 'var(--green)' : 'var(--red)')}
-        ${tile('Tranzacții', spent.length + received.length, 'var(--blue)')}
+        ${tile('Tranzacții', spent.length + received.length, 'var(--blue)', 'mo-all')}
       </div>
       <div class="fhead">Încă în așteptare (acum)</div>
       <div class="tiles">
-        ${tile('De plătit', totals(pairs(toPay)), 'var(--orange)')}
-        ${tile('De primit', totals(pairs(toReceive)), 'var(--purple)')}
+        ${tile('De plătit', totals(pairs(toPay)), 'var(--orange)', 'mo-topay')}
+        ${tile('De primit', totals(pairs(toReceive)), 'var(--purple)', 'mo-toreceive')}
       </div>
 
       <div class="segin" style="margin-top:20px">
@@ -1754,7 +2308,8 @@ function moneyStatsHtml() {
         <div class="readout"><b>${esc(cap(fMonthLong.format(sel.d)))}</b><span>${esc(money(sel.sum, cur))} · ${nItems(sel.n)}</span></div>
         <div class="bars">${bars}</div>
       </div>
-      <div class="ffoot">${word} pe luni, în ${esc(cur)}. Apasă pe o lună ca să vezi suma.${other.length ? ` Sumele în altă monedă (${esc(totals(pairs(other)))}) nu apar în grafic.` : ''}</div>
+      <div class="ffoot">${word} pe luni, în ${esc(cur)}. Apasă sau glisează peste luni ca să vezi ce e în ele.${other.length ? ` Sumele în altă monedă (${esc(totals(pairs(other)))}) nu apar în grafic.` : ''}</div>
+      ${monthListHtml(sel, metricItems.filter(x => monthKey(x.date) === sel.key).map(x => x.e), word)}
 
       ${lists.length ? `<div class="fhead">${word} pe liste</div><div class="form">${lists.map(l => hbar(`${l.c.icon} ${esc(l.c.name)}`, l.sum, lmax, colorOf(l.c), nItems(l.n))).join('')}</div>` : ''}
       ${vendors.length ? `<div class="fhead">${metric === 'spent' ? 'Cui ai plătit cel mai mult' : 'De la cine ai primit cel mai mult'}</div><div class="form">${vendors.map(([n, v]) => hbar(esc(n), v.sum, vmax, color, nItems(v.n))).join('')}</div>` : ''}
@@ -1788,6 +2343,7 @@ function renderSheet() {
   // no slide animation on re-render
   if (body) el.querySelectorAll('.panel, .overlay').forEach(x => (x.style.animation = 'none'));
   document.body.style.overflow = 'hidden';
+  initSegs(el);
 }
 function closeSheet() { ui.sheet = null; ui.pendingRerender = false; renderSheet(); render(); }
 
@@ -1867,17 +2423,72 @@ document.addEventListener('click', ev => {
       if (i >= 0) s.d.weekdays.splice(i, 1); else s.d.weekdays.push(w);
       renderSheet(); break;
     }
-    case 'm-dur': s.d.durType = el.dataset.v; renderSheet(); break;
+    case 'm-dur':
+      s.d.durType = el.dataset.v;
+      // "Până la" never starts before the start day
+      if (s.d.durType === 'until' && s.d.until < s.d.start) s.d.until = s.d.start;
+      renderSheet(); break;
     case 'm-days': s.d.days = Math.max(1, Math.min(3650, (+s.d.days || 1) + +el.dataset.v)); renderSheet(); break;
     case 'm-daysset': s.d.days = +el.dataset.v; renderSheet(); break;
-    case 'search-cat': ui.sheet = null; renderSheet(); ui.tab = 'lists'; ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); window.scrollTo(0, 0); break;
-    case 'open': { const e = entryById(id); if (e) openEntry(e.cat, e.id); break; }
+    case 'search-cat': if (ui.searching && ui.searchQ) addRecent(ui.searchQ); ui.searching = false; ui.searchQ = ''; ui.searchFilter = null; ui.sheet = null; renderSheet(); ui.tab = 'lists'; ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); scroller().scrollTo(0, 0); break;
+    case 'open': { const e = entryById(id); if (ui.searching && ui.searchQ) addRecent(ui.searchQ); if (e) openEntry(e.cat, e.id); break; }
+    case 'search-cancel': exitSearch(); break;
+    case 'acc': {
+      // expand / collapse a list inside the month view (animated, no re-render)
+      const box = el.closest('.acc');
+      const k = el.dataset.k;
+      if (box.classList.toggle('open')) accOpen.add(k); else accOpen.delete(k);
+      break;
+    }
+    // shopping list
+    case 'qa-add': {
+      const inp = document.getElementById('quickadd');
+      const c = catById(id);
+      if (c && inp && shopAdd(c, inp.value)) { render(); document.getElementById('quickadd')?.focus(); }
+      break;
+    }
+    case 'qa-pick': {
+      const c = catById(id);
+      if (c && shopAdd(c, el.dataset.v, el.dataset.g)) {
+        render();
+        toast(`${el.dataset.v} → ${el.dataset.g}`);
+        document.getElementById('quickadd')?.focus();
+      }
+      break;
+    }
+    case 'qa-again': { const c = catById(id); if (c && shopAdd(c, el.dataset.v)) { render(); toast(`${el.dataset.v} adăugat`); } break; }
+    case 'cart-clear': {
+      const c = catById(id);
+      const n = db.entries.filter(e => e.cat === id && e.done).length;
+      openActions(`Scoți din listă cele ${n} produse din coș?`, [
+        { label: '🛒 Golește coșul', danger: true, run: () => { db.entries = db.entries.filter(e => !(e.cat === id && e.done)); save(); render(); toast('Coșul e gol'); } },
+      ]);
+      break;
+    }
+    case 'tile-filter': ui.searchFilter = el.dataset.f; ui.searchQ = ''; ui.searching = true; render(); scroller().scrollTo(0, 0); break;
+    case 'sugg': {
+      ui.searchFilter = el.dataset.v; ui.searchQ = '';
+      const inp = document.getElementById('gsearch'); if (inp) { inp.value = ''; inp.blur(); }
+      updateSearchLayer(); break;
+    }
+    case 'filter-clear':
+      // a filter opened from a Statistici tile → ✕ goes straight back to the stats
+      if (STAT_FILTERS[ui.searchFilter]) { exitSearch(); render(); }
+      else { ui.searchFilter = null; updateSearchLayer(); }
+      break;
+    case 'recent': {
+      ui.searchQ = el.dataset.v; ui.searchFilter = null; addRecent(ui.searchQ);
+      const inp = document.getElementById('gsearch'); if (inp) inp.value = ui.searchQ;
+      updateSearchLayer(); break;
+    }
+    case 'recent-del': recents().splice(+el.dataset.i, 1); save(); updateSearchLayer(); break;
+    case 'recent-clear': (db.settings ||= {}).recent = []; save(); updateSearchLayer(); break;
     case 'toggle': { const e = entryById(id); if (e) askThenToggle(e); break; }
     case 'undo': undoDone(id); break;
     case 'stats': openStats(id); break;
     case 'money-metric': ui.stats.metric = el.dataset.v; render(); break;
     case 'money-sel': case 'stat-sel': ui.stats.sel = el.dataset.k; render(); break;
-    case 'stat-view': ui.stats.view = el.dataset.v; ui.stats.sel = monthKey(new Date()); render(); window.scrollTo(0, 0); break;
+    case 'stat-view': ui.stats.view = el.dataset.v; ui.stats.sel = monthKey(new Date()); render(); scroller().scrollTo(0, 0); break;
     case 'stat-range': ui.stats.range = el.dataset.v; ui.stats.sel = monthKey(new Date()); render(); break;
     case 'stat-metric': ui.stats.act = el.dataset.v; render(); break;
     case 'swipe-del': closeSwipe(); confirmSwipeDelete(el.dataset.kind, id); break;
@@ -1887,8 +2498,8 @@ document.addEventListener('click', ev => {
     case 'set-confirm': db.settings = { ...(db.settings || {}), confirmCheck: !db.settings?.confirmCheck }; save(); render(); break;
     case 'sub': { const e = entryById(id); if (e) { toggleSub(e, el.dataset.sid); render(); } break; }
     case 'alarm': { const e = entryById(id); if (e) addAlarm(e); break; }
-    case 'open-cat': ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); window.scrollTo(0, 0); break;
-    case 'back': ui.catId = null; render(); window.scrollTo(0, 0); break;
+    case 'open-cat': ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); scroller().scrollTo(0, 0); break;
+    case 'back': ui.catId = null; render(); scroller().scrollTo(0, 0); break;
     case 'new': openEntry(id); break;
     case 'new-pick': {
       const list = el.dataset.rem ? cats().filter(c => c.reminderMode !== 'off').sort((a, b) => (b.reminderMode === 'always') - (a.reminderMode === 'always')) : cats();
@@ -1932,6 +2543,24 @@ document.addEventListener('click', ev => {
       if (confirm(`Ștergi „${s.d.title || 'elementul'}”?`)) { deleteEntry(s.d.id); closeSheet(); toast('Șters'); }
       break;
     case 'quick': s.d.reminder = el.dataset.v; s.d.hasReminder = true; s.d.remTouched = true; renderSheet(); break;
+    // repeating reminders
+    case 'r-int': s.d.repInterval = Math.max(1, Math.min(365, (+s.d.repInterval || 1) + +el.dataset.v)); renderSheet(); break;
+    case 'r-end': s.d.repEnd = el.dataset.v; renderSheet(); break;
+    case 'r-count': s.d.repCount = Math.max(1, Math.min(999, (+s.d.repCount || 1) + +el.dataset.v)); renderSheet(); break;
+    case 'r-countset': s.d.repCount = +el.dataset.v; renderSheet(); break;
+    case 'r-preset': s.d.hasReminder = true; s.d.remTouched = true; s.d.repeat = 'daily'; s.d.repEnd = 'count'; s.d.repCount = +el.dataset.v; renderSheet(); break;
+    case 'cal-day': {
+      const k = el.dataset.v; const i = s.d.repDates.indexOf(k);
+      if (i >= 0) s.d.repDates.splice(i, 1); else s.d.repDates.push(k);
+      try { navigator.vibrate?.(6); } catch (e) { /* ignore */ }
+      renderSheet(); break;
+    }
+    case 'cal-nav': {
+      const [y, m] = s.d.calMonth.split('-').map(Number);
+      const nd = new Date(y, m - 1 + +el.dataset.v, 1);
+      s.d.calMonth = `${nd.getFullYear()}-${pad(nd.getMonth() + 1)}`; renderSheet(); break;
+    }
+    case 'cal-clear': s.d.repDates = []; renderSheet(); break;
     case 'pickgroup': s.d.group = el.dataset.v; renderSheet(); break;
     case 'dir': s.d.dir = el.dataset.v; renderSheet(); break;
     case 'dsub-toggle': { const x = s.d.subs.find(z => z.id === el.dataset.sid); if (x) x.done = !x.done; renderSheet(); break; }
@@ -1959,9 +2588,16 @@ document.addEventListener('click', ev => {
 // bound inputs (data-bind) – text fields update silently, toggles/selects re-render
 document.addEventListener('input', ev => {
   const t = ev.target;
-  if (t.id === 'gsearch' && ui.sheet?.type === 'search') {
-    ui.sheet.q = t.value;
-    refreshSearch();
+  if (t.id === 'quickadd') {
+    const box = document.getElementById('qasugg');
+    const c = catById(t.dataset.cat);
+    if (box && c) box.innerHTML = shopSuggestHtml(c, t.value);
+    return;
+  }
+  if (t.id === 'gsearch') {
+    ui.searchQ = t.value;
+    if (t.value) ui.searchFilter = null;
+    if (!ui.searching) enterSearch(); else updateSearchLayer();
     return;
   }
   if (t.id === 'search') {
@@ -2038,6 +2674,16 @@ document.addEventListener('focusout', ev => {
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && ev.target.id === 'newsub') { ev.preventDefault(); addDraftSub(); }
   else if (ev.key === 'Enter' && ev.target.id === 'f-title') { ev.preventDefault(); ev.target.blur(); }
+  else if (ev.key === 'Enter' && ev.target.id === 'quickadd') {
+    ev.preventDefault();
+    const c = catById(ev.target.dataset.cat);
+    if (c && shopAdd(c, ev.target.value)) {
+      render();
+      const inp = document.getElementById('quickadd');
+      if (inp) inp.focus();               // keep typing the next product
+    }
+  }
+  else if (ev.key === 'Enter' && ev.target.id === 'gsearch') { ev.preventDefault(); addRecent(ev.target.value); ev.target.blur(); }
 });
 
 function setBound(b, value, rerender) {
@@ -2052,6 +2698,9 @@ function setBound(b, value, rerender) {
       const c = catById(value);
       if (c.reminderMode === 'always') d.hasReminder = true;
       if (c.usesAmount && !c.usesPaid) d.hasAmount = true;
+    } else if (b === 'remTime') {
+      if (value) d.reminder = (d.reminder.split('T')[0] || dkey(new Date())) + 'T' + value;
+      d.remTouched = true;
     } else if (b === 'deadlineDate') {
       if (value) d.deadline = value + 'T12:00';
       applyAutoReminder(d);
@@ -2286,7 +2935,10 @@ function endLongDrag() {
   const newIds = [...oldIds];
   const [moved] = newIds.splice(from, 1);
   newIds.splice(to, 0, moved);
-  if (wrap.dataset.reorder === 'cat') {
+  if (wrap.dataset.reorder === 'shop') {
+    // shopping: the new order inside this aisle
+    newIds.forEach((eid, i) => { const e = entryById(eid); if (e) e.pos = i; });
+  } else if (wrap.dataset.reorder === 'cat') {
     const others = cats().filter(c => !newIds.includes(c.id));
     [...newIds.map(catById), ...others].forEach((c, i) => { if (c) c.order = i; });
   } else {
@@ -2306,6 +2958,97 @@ function endLongDrag() {
 }
 document.addEventListener('pointerup', endLongDrag);
 document.addEventListener('pointercancel', ev => { if (!ldrag) cancelLongPress(); else endLongDrag(); });
+
+// ---------- segmented buttons: sliding bubble + drag your finger across (like the bottom bar) ----------
+const segPos = {};
+const segKey = seg => [...seg.querySelectorAll(':scope > button')].map(b => `${b.dataset.act || ''}:${b.dataset.v || b.dataset.f || ''}`).join('|');
+const setSegPill = (p, pos) => { p.style.width = pos.width + 'px'; p.style.transform = `translateX(${pos.left}px)`; };
+function initSegs(root) {
+  (root || document).querySelectorAll('.seg, .segin').forEach(seg => {
+    let pill = seg.querySelector(':scope > .segpill');
+    if (!pill) { pill = document.createElement('span'); pill.className = 'segpill'; seg.prepend(pill); }
+    const on = seg.querySelector(':scope > button.on');
+    if (!on || !on.offsetWidth) { pill.style.opacity = on ? '' : '0'; return; }
+    pill.style.opacity = '';
+    const key = segKey(seg);
+    const to = { left: on.offsetLeft, width: on.offsetWidth };
+    const from = segPos[key];
+    seg.classList.add('noanim');
+    setSegPill(pill, from && from.left !== to.left ? from : to);
+    void pill.offsetWidth;
+    seg.classList.remove('noanim');
+    if (from && from.left !== to.left) requestAnimationFrame(() => setSegPill(pill, to));
+    segPos[key] = to;
+  });
+}
+let segDrag = null;
+document.addEventListener('pointerdown', ev => {
+  const seg = ev.target.closest('.seg, .segin');
+  if (!seg || ev.button > 0) return;
+  segDrag = { seg, id: ev.pointerId, x: ev.clientX, moved: false, over: null, left: 0, width: 0 };
+});
+document.addEventListener('pointermove', ev => {
+  if (!segDrag || ev.pointerId !== segDrag.id) return;
+  const { seg } = segDrag;
+  if (!segDrag.moved && Math.abs(ev.clientX - segDrag.x) < 7) return;
+  segDrag.moved = true;
+  seg.classList.add('dragging');
+  const btns = [...seg.querySelectorAll(':scope > button')];
+  const sr = seg.getBoundingClientRect();
+  const over = btns.find(b => { const r = b.getBoundingClientRect(); return ev.clientX >= r.left && ev.clientX < r.right; })
+    || (ev.clientX < sr.left + sr.width / 2 ? btns[0] : btns[btns.length - 1]);
+  if (over !== segDrag.over) { segDrag.over = over; try { navigator.vibrate?.(6); } catch (e) { /* ignore */ } }
+  btns.forEach(b => b.classList.toggle('over', b === over));
+  magnify(btns, ev.clientX, 1.12, 1.1);
+  const w = over.offsetWidth;
+  const left = Math.max(2, Math.min(seg.offsetWidth - w - 2, ev.clientX - sr.left - w / 2));
+  segDrag.left = left; segDrag.width = w;
+  const pill = seg.querySelector(':scope > .segpill');
+  if (pill) setSegPill(pill, { left, width: w });
+});
+function endSegDrag(ev) {
+  if (!segDrag || (ev && ev.pointerId !== segDrag.id)) return;
+  const d = segDrag;
+  segDrag = null;
+  d.seg.classList.remove('dragging');
+  d.seg.querySelectorAll('.over').forEach(b => b.classList.remove('over'));
+  unmagnify([...d.seg.querySelectorAll(':scope > button')]);
+  if (!d.moved || !d.over) return;
+  segPos[segKey(d.seg)] = { left: d.left, width: d.width };   // the bubble continues from where your finger was
+  if (d.over.classList.contains('on')) { initSegs(d.seg.parentElement); }
+  else d.over.click();
+  suppressClick = true;
+  setTimeout(() => { suppressClick = false; }, 350);
+}
+document.addEventListener('pointerup', endSegDrag);
+document.addEventListener('pointercancel', endSegDrag);
+
+// ---------- charts: slide your finger across the months ----------
+let barDrag = null;
+document.addEventListener('pointerdown', ev => {
+  const bars = ev.target.closest('.bars');
+  if (!bars) return;
+  barDrag = { id: ev.pointerId, x: ev.clientX, moved: false, last: null, root: ev.target.closest('#sheet') ? '#sheet' : '#app' };
+});
+document.addEventListener('pointermove', ev => {
+  if (!barDrag || ev.pointerId !== barDrag.id) return;
+  if (!barDrag.moved && Math.abs(ev.clientX - barDrag.x) < 7) return;
+  barDrag.moved = true;
+  const bar = [...document.querySelectorAll(`${barDrag.root} .bars .bar`)].find(b => { const r = b.getBoundingClientRect(); return ev.clientX >= r.left && ev.clientX < r.right; });
+  if (bar && bar.dataset.k !== barDrag.last && !bar.classList.contains('sel')) {
+    barDrag.last = bar.dataset.k;
+    try { navigator.vibrate?.(5); } catch (e) { /* ignore */ }
+    bar.click();
+  }
+});
+function endBarDrag(ev) {
+  if (!barDrag || (ev && ev.pointerId !== barDrag.id)) return;
+  const moved = barDrag.moved;
+  barDrag = null;
+  if (moved) { suppressClick = true; setTimeout(() => { suppressClick = false; }, 350); }
+}
+document.addEventListener('pointerup', endBarDrag);
+document.addEventListener('pointercancel', endBarDrag);
 
 // ---------- iPhone: close the keyboard when you start scrolling ----------
 // (otherwise the blinking text cursor drifts while the panel scrolls)
