@@ -21,7 +21,7 @@
     --line: rgba(60, 60, 67, .14); --accent: #7C5CFA; --red: #EB4240; --green: #2EB87A; --orange: #FF8C40;
     --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 14px rgba(0,0,0,.05);
     --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
-    --jos: 110px;   /* spațiu liber jos: bara plutitoare MindMe stă peste ultimii ~100px */
+    --jos: 28px;   /* MindMe's bar now sits below this page, not over it */
     --segpill: #FFFFFF; --segbg: rgba(118,118,128,.14); --track: #EFEFF4;
     /* nume vechi, folosite și în HTML-ul generat din script */
     --indigo: var(--accent); --violet: #9961F2; --text2: var(--muted); --fundal: var(--bg); --linie: var(--line);
@@ -251,6 +251,7 @@
     padding: 11px 18px; border-radius: 22px; font-size: 14px; font-weight: 600; text-align: center; z-index: 30; width: max-content; max-width: calc(100% - 32px);
     box-shadow: 0 6px 20px rgba(0,0,0,.2); animation: urcaToast .28s cubic-bezier(.2,.9,.3,1); }
   @keyframes urcaToast { from { transform: translate(-50%, 24px); opacity: 0; } }
+  html, body { overscroll-behavior: none; }
 </style>
 </head>
 <body>

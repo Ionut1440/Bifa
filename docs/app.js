@@ -844,7 +844,7 @@ function render() {
     const fr = document.getElementById('appframe');
     if (fr && fr.dataset.cat === cur.id) { renderTabbar(); return; }
   }
-  const y = window.scrollY;
+  const y = scroller().scrollTop;
   let html;
   if (ui.tab === 'lists' && ui.catId && catById(ui.catId)) html = screenCategory(catById(ui.catId));
   else if (ui.tab === 'lists') { ui.catId = null; html = screenLists(); }
@@ -857,7 +857,7 @@ function render() {
   app.innerHTML = html;
   app.classList.toggle('searching', !!(isMain && ui.searching));
   openSwipeEl = null;
-  window.scrollTo(0, ui.searching ? 0 : y);
+  scroller().scrollTo(0, ui.searching ? 0 : y);
   renderTabbar();
   initSegs(app);
 }
@@ -939,10 +939,9 @@ function updateSearchLayer() {
 function enterSearch() {
   if (ui.searching) return;
   ui.searching = true;
-  window.scrollTo(0, 0);
+  scroller().scrollTo(0, 0);
   document.getElementById('app').classList.add('searching');
   updateSearchLayer();
-  document.getElementById('tabbar')?.classList.add('compact');
 }
 function exitSearch() {
   ui.searching = false;
@@ -994,12 +993,12 @@ function placePill(btn, x) {
   pill.style.transform = `translateX(${left}px)`;
 }
 function switchTab(id) {
-  if (ui.tab === id && !ui.catId) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  if (ui.tab === id && !ui.catId) { scroller().scrollTo({ top: 0, behavior: 'smooth' }); return; }
   ui.tab = id; ui.catId = null; ui.reorder = false; ui.search = '';
   ui.searching = false; ui.searchQ = ''; ui.searchFilter = null;
   document.getElementById('tabbar')?.classList.remove('compact');
   render();
-  window.scrollTo(0, 0);
+  scroller().scrollTo(0, 0);
 }
 let tabDrag = null;
 function tabAt(x) {
@@ -1059,14 +1058,8 @@ document.addEventListener('pointercancel', endTabDrag);
 window.addEventListener('resize', () => { if (!tabDrag) placePill(document.querySelector(`#tabbar button[data-tab="${ui.tab}"]`)); });
 // scrolling down: the glass bar gets a little smaller; scrolling up or at the top: back to normal
 let lastScrollY = 0;
-window.addEventListener('scroll', () => {
-  const y = window.scrollY;
-  const bar = document.getElementById('tabbar');
-  if (!bar || tabDrag) { lastScrollY = y; return; }
-  if (y < 40 || y < lastScrollY - 6) bar.classList.remove('compact');
-  else if (y > lastScrollY + 6) bar.classList.add('compact');
-  if (Math.abs(y - lastScrollY) > 6) lastScrollY = y;
-}, { passive: true });
+// (the bar no longer shrinks while scrolling: content now stops right above it)
+function scroller() { return document.getElementById('app'); }
 
 // ---------- entry editor ----------
 function newDraft(c) {
@@ -2437,7 +2430,7 @@ document.addEventListener('click', ev => {
       renderSheet(); break;
     case 'm-days': s.d.days = Math.max(1, Math.min(3650, (+s.d.days || 1) + +el.dataset.v)); renderSheet(); break;
     case 'm-daysset': s.d.days = +el.dataset.v; renderSheet(); break;
-    case 'search-cat': if (ui.searching && ui.searchQ) addRecent(ui.searchQ); ui.searching = false; ui.searchQ = ''; ui.searchFilter = null; ui.sheet = null; renderSheet(); ui.tab = 'lists'; ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); window.scrollTo(0, 0); break;
+    case 'search-cat': if (ui.searching && ui.searchQ) addRecent(ui.searchQ); ui.searching = false; ui.searchQ = ''; ui.searchFilter = null; ui.sheet = null; renderSheet(); ui.tab = 'lists'; ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); scroller().scrollTo(0, 0); break;
     case 'open': { const e = entryById(id); if (ui.searching && ui.searchQ) addRecent(ui.searchQ); if (e) openEntry(e.cat, e.id); break; }
     case 'search-cancel': exitSearch(); break;
     case 'acc': {
@@ -2472,7 +2465,7 @@ document.addEventListener('click', ev => {
       ]);
       break;
     }
-    case 'tile-filter': ui.searchFilter = el.dataset.f; ui.searchQ = ''; ui.searching = true; render(); window.scrollTo(0, 0); break;
+    case 'tile-filter': ui.searchFilter = el.dataset.f; ui.searchQ = ''; ui.searching = true; render(); scroller().scrollTo(0, 0); break;
     case 'sugg': {
       ui.searchFilter = el.dataset.v; ui.searchQ = '';
       const inp = document.getElementById('gsearch'); if (inp) { inp.value = ''; inp.blur(); }
@@ -2495,7 +2488,7 @@ document.addEventListener('click', ev => {
     case 'stats': openStats(id); break;
     case 'money-metric': ui.stats.metric = el.dataset.v; render(); break;
     case 'money-sel': case 'stat-sel': ui.stats.sel = el.dataset.k; render(); break;
-    case 'stat-view': ui.stats.view = el.dataset.v; ui.stats.sel = monthKey(new Date()); render(); window.scrollTo(0, 0); break;
+    case 'stat-view': ui.stats.view = el.dataset.v; ui.stats.sel = monthKey(new Date()); render(); scroller().scrollTo(0, 0); break;
     case 'stat-range': ui.stats.range = el.dataset.v; ui.stats.sel = monthKey(new Date()); render(); break;
     case 'stat-metric': ui.stats.act = el.dataset.v; render(); break;
     case 'swipe-del': closeSwipe(); confirmSwipeDelete(el.dataset.kind, id); break;
@@ -2505,8 +2498,8 @@ document.addEventListener('click', ev => {
     case 'set-confirm': db.settings = { ...(db.settings || {}), confirmCheck: !db.settings?.confirmCheck }; save(); render(); break;
     case 'sub': { const e = entryById(id); if (e) { toggleSub(e, el.dataset.sid); render(); } break; }
     case 'alarm': { const e = entryById(id); if (e) addAlarm(e); break; }
-    case 'open-cat': ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); window.scrollTo(0, 0); break;
-    case 'back': ui.catId = null; render(); window.scrollTo(0, 0); break;
+    case 'open-cat': ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); scroller().scrollTo(0, 0); break;
+    case 'back': ui.catId = null; render(); scroller().scrollTo(0, 0); break;
     case 'new': openEntry(id); break;
     case 'new-pick': {
       const list = el.dataset.rem ? cats().filter(c => c.reminderMode !== 'off').sort((a, b) => (b.reminderMode === 'always') - (a.reminderMode === 'always')) : cats();
