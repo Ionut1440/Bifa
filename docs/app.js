@@ -1274,7 +1274,7 @@ function entrySheetHtml() {
     if (c.usesGroups) {
       h += `<div class="field"><span class="ico">📁</span><input type="text" data-bind="group" list="grouplist" placeholder="${isShopCat(c) ? 'Raion' : 'Grup (ex: Casă, Muncă)'}" value="${esc(d.group)}">
         <datalist id="grouplist">${groups.map(g => `<option value="${esc(g)}">`).join('')}</datalist></div>`;
-      if (groups.length) h += `<div class="quick" style="--pink:var(--purple)">${groups.map(g => `<button data-act="pickgroup" data-v="${esc(g)}">${esc(g)}</button>`).join('')}</div>`;
+      if (groups.length) h += `<div class="quick wrap" style="--pink:var(--purple)">${groups.map(g => `<button data-act="pickgroup" data-v="${esc(g)}" class="${d.group === g ? 'on' : ''}">${isShopCat(c) ? aisleIcon(g) + ' ' : ''}${esc(g)}</button>`).join('')}</div>`;
     }
     parts.push(h + `</div>`);
   }
@@ -2413,15 +2413,18 @@ function moneyStatsHtml() {
 }
 
 // ---------- action sheet ----------
-function openActions(title, actions) {
-  ui.sheet = { type: 'actions', title, actions };
+function openActions(title, actions, opts = {}) {
+  ui.sheet = { type: 'actions', title, actions, grid: !!opts.grid };
   renderSheet();
 }
 function actionsHtml() {
-  const { title, actions } = ui.sheet;
+  const { title, actions, grid } = ui.sheet;
+  // long lists scroll inside the sheet; "grid" = two columns of tiles (e.g. choosing a store aisle)
   return `<div class="overlay" data-act="sheet-close"></div>
-    <div class="asheet"><div class="agroup">${title ? `<div class="atitle">${esc(title)}</div>` : ''}
-      ${actions.map((a, i) => `<button class="${a.danger ? 'danger' : ''} ${a.selected ? 'sel' : ''}" data-act="action" data-i="${i}">${esc(a.label)}</button>`).join('')}</div>
+    <div class="asheet">
+      <div class="agroup ascroll ${grid ? 'agrid' : ''}">${title ? `<div class="atitle">${esc(title)}</div>` : ''}
+        <div class="aitems">${actions.map((a, i) => `<button class="${a.danger ? 'danger' : ''} ${a.selected ? 'sel' : ''}" data-act="action" data-i="${i}">${grid && a.icon
+          ? `<span class="ag-ico">${a.icon}</span><span class="ag-lbl">${esc(a.label)}</span>` : esc(a.label)}</button>`).join('')}</div></div>
       <div class="agroup"><button class="cancel" data-act="sheet-close">Renunță</button></div></div>`;
 }
 
@@ -2555,9 +2558,9 @@ document.addEventListener('click', ev => {
     case 'qa-pickaisle': {
       const c = catById(id); const name = el.dataset.v;
       openActions(`În ce raion pui „${name}”? Îl țin minte pentru data viitoare.`, aisles().map(a => ({
-        label: `${a[1]}  ${a[0]}`,
+        label: a[0], icon: a[1],
         run: () => { learnProduct(name, a[0]); if (c && shopAdd(c, name, a[0])) { render(); toast(`${name} → ${a[0]}`); } },
-      })));
+      })), { grid: true });
       break;
     }
     case 'my-products': ui.sheet = { type: 'myprod', name: '', aisle: 'Altele' }; renderSheet(); break;
