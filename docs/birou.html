@@ -14,15 +14,16 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Calendar Birou</title>
 <style>
-  /* ---------- MindMe design tokens ---------- */
+  /* ---------- MindMe design tokens (identice cu style.css) ---------- */
   :root {
     --bg: #F2F2F7; --card: #FFFFFF; --card2: #F7F7FA; --text: #111114; --muted: #8A8A93;
     --line: rgba(60, 60, 67, .14); --accent: #7C5CFA;
     --red: #EB4240; --green: #2EB87A; --orange: #FF8C40; --blue: #3478F6; --purple: #9961F2;
-    --fill: rgba(118, 118, 128, .14);
+    --fill: rgba(118, 118, 128, .14); --fill2: rgba(118, 118, 128, .09);
     --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 14px rgba(0,0,0,.05);
     --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
-    --pill: #FFFFFF;
+    --pill: #FFFFFF; --field: #EFEFF4;
+    --jos: 110px;   /* spațiu liber sub conținut: acolo plutește bara de jos din MindMe */
     color-scheme: light;
     /* nume folosite de script (păstrate) → mapate pe culorile MindMe */
     --verde: var(--green); --verde-inchis: #1F9E64; --rosu: var(--red); --portocaliu: var(--orange);
@@ -32,11 +33,13 @@
     :root {
       --bg: #000000; --card: #1C1C1E; --card2: #2C2C2E; --text: #F4F4F6; --muted: #8E8E96;
       --line: rgba(255, 255, 255, .12); --shadow: none; --pill: #636366; --verde-inchis: #3CCB8B;
+      --fill2: rgba(118, 118, 128, .2); --field: #2C2C2E;
       color-scheme: dark;
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  html { overflow-x: hidden; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
     font-size: 16px; line-height: 1.3; -webkit-font-smoothing: antialiased;
@@ -49,135 +52,205 @@
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
   img { -webkit-user-drag: none; pointer-events: none; }
 
-  main { max-width: 560px; margin: 0 auto;
-    padding: calc(var(--safe-t) + 12px) 16px calc(var(--safe-b) + 28px); }
+  main { max-width: 600px; margin: 0 auto;
+    padding: calc(var(--safe-t) + 6px) 16px calc(var(--safe-b) + var(--jos)); }
 
   /* ---------- titluri secțiuni + carduri ---------- */
   .sec-title { font-size: 13px; font-weight: 600; text-transform: uppercase; color: var(--muted);
     letter-spacing: .3px; margin: 22px 4px 7px; }
   .rand { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .sec-title.rand { margin-top: 22px; }
   .card { background: var(--card); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 14px; }
 
-  /* ---------- navigare lună (card sus, în locul antetului negru) ---------- */
-  .navcard { padding: 8px 8px 10px; }
-  .nav { display: flex; align-items: center; gap: 4px; }
-  .nav .iconbtn { width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center;
-    color: var(--accent); transition: transform .15s, background .15s; flex: 0 0 auto; }
-  .nav .iconbtn svg { width: 22px; height: 22px; }
-  .nav .iconbtn:active { transform: scale(.88); background: var(--fill); }
-  .nav .luna { font-size: 20px; font-weight: 800; letter-spacing: -.3px; text-align: center; flex: 1; min-width: 0;
+  /* ---------- navigare lună (rândul de sus) ---------- */
+  .nav { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 0 0 4px; }
+  .luna-wrap { flex: 1; min-width: 0; overflow: hidden; }
+  .nav .luna { font-size: 24px; font-weight: 800; letter-spacing: -.4px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .nav .azi { padding: 7px 14px; font-size: 14px; font-weight: 700; border-radius: 10px; margin-left: 4px;
-    background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); transition: transform .15s; }
-  .nav .azi:active { transform: scale(.94); }
-  .program { color: var(--muted); font-size: 13px; text-align: center; margin-top: 2px; }
+  .nav .iconbtn { width: 36px; height: 36px; border-radius: 18px; display: grid; place-items: center;
+    color: var(--accent); background: var(--fill2); transition: transform .15s, background .15s; flex: 0 0 auto; }
+  .nav .iconbtn svg { width: 18px; height: 18px; }
+  .nav .iconbtn:active { transform: scale(.86); background: var(--fill); }
+  .nav .azi { height: 36px; padding: 0 14px; font-size: 15px; font-weight: 700; border-radius: 18px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
+    transition: transform .15s, opacity .2s; flex: 0 0 auto; }
+  .nav .azi:active { transform: scale(.92); }
+  body:has(#cardLuna.curent) .nav .azi { opacity: .45; }
 
-  /* ---------- „Marchează ziua ca”: control segmentat cu bulă care alunecă ---------- */
-  .seg { position: relative; background: var(--fill); border-radius: 10px; padding: 2px;
-    touch-action: pan-y; -webkit-user-select: none; user-select: none; }
-  .segpill { position: absolute; top: 0; left: 0; width: 0; height: 0; border-radius: 8px; background: var(--pill);
-    box-shadow: 0 1px 4px rgba(0,0,0,.14); z-index: 0; pointer-events: none;
-    transition: transform .36s cubic-bezier(.3,1.3,.5,1), width .25s ease, height .25s ease; }
-  .seg.noanim .segpill { transition: none; }
-  .seg.dragging .segpill { transition: transform .12s ease, width .2s ease, height .2s ease; box-shadow: 0 3px 10px rgba(0,0,0,.18); }
-  .chipuri { display: flex; }
-  .chip { position: relative; z-index: 1; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 4px; padding: 7px 4px 6px; border-radius: 8px;
-    font-size: 12px; font-weight: 600; line-height: 1.15; text-align: center; color: var(--text);
-    transition: transform .2s cubic-bezier(.3,1.4,.5,1); }
-  .chip i { width: 12px; height: 12px; border-radius: 50%; display: block; flex: 0 0 auto; }
-  .chip.activ { font-weight: 700; }
-  .chip:active, .chip.over { transform: scale(.94); }
-
-  /* ---------- calendar ---------- */
-  .insigna { font-weight: 800; font-size: 13px; padding: 3px 10px; border-radius: 20px; text-transform: none; letter-spacing: 0;
+  /* ---------- card progres (ca .medtoday din MindMe) ---------- */
+  .medtoday { --c: var(--green); background: var(--card); border-radius: 14px; box-shadow: var(--shadow);
+    padding: 13px 14px 12px; margin-top: 8px; }
+  .medtoday[data-st="rau"] { --c: var(--red); }
+  .medtoday[data-st="ok"] { --c: var(--green); }
+  .mt-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .mt-l { font-size: 12px; font-weight: 700; color: var(--c); text-transform: uppercase; letter-spacing: .3px; }
+  .mt-v { margin-top: 3px; line-height: 1.2; }
+  .mt-v b { font-size: 26px; font-weight: 800; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
+  .mt-v small { display: block; font-size: 14px; font-weight: 600; color: var(--muted); margin-top: 1px; }
+  .necesar { text-align: right; flex: 0 0 auto; }
+  .necesar small { display: block; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .3px; margin-bottom: 4px; }
+  .insigna { display: inline-block; font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 20px;
     background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); white-space: nowrap;
     font-variant-numeric: tabular-nums; }
-  .grila { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
-  .grila .cap { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding: 2px 0 4px; }
-  .grila .cap.we { opacity: .6; }
-  .zi { aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;
-    background: var(--card2); border-radius: 10px; cursor: pointer; font-variant-numeric: tabular-nums;
-    transition: transform .15s, background .15s, color .15s; }
-  @media (prefers-color-scheme: light) { .zi { background: #F0F0F5; } }
-  .zi:active { transform: scale(.88); }
+  .progres { height: 10px; border-radius: 5px; background: rgba(118,118,128,.16); margin: 12px 0 10px; overflow: hidden; }
+  .progres div { height: 100%; border-radius: 5px; background: var(--verde); width: 0;
+    transition: width .45s cubic-bezier(.2,.9,.3,1), background .3s; }
+  .stare { font-weight: 700; font-size: 15px; }
+  .stare.ok { color: var(--verde-inchis); } .stare.rau { color: var(--rosu); }
+  .detalii { font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+
+  /* ---------- „Marchează ziua ca”: control segmentat cu bulă care alunecă + lupă ---------- */
+  .seg { position: relative; background: var(--fill); border-radius: 12px; padding: 2px;
+    touch-action: pan-y; -webkit-user-select: none; user-select: none; transition: transform .2s cubic-bezier(.3,1.4,.5,1); }
+  .seg.dragging { transform: scale(1.015); }
+  .segpill { position: absolute; top: 0; left: 0; width: 0; height: 0; border-radius: 10px; background: var(--pill);
+    box-shadow: 0 1px 4px rgba(0,0,0,.14); z-index: 0; pointer-events: none;
+    transition: transform .38s cubic-bezier(.3,1.3,.5,1), width .25s ease, height .25s ease; }
+  .seg.noanim .segpill { transition: none; }
+  .seg.dragging .segpill { transition: width .2s ease, height .2s ease; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+  .chipuri { display: flex; }
+  .chip { position: relative; z-index: 1; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 5px; padding: 8px 3px 7px; border-radius: 10px;
+    font-size: 12px; font-weight: 600; line-height: 1.15; text-align: center; color: var(--text);
+    transition: transform .2s cubic-bezier(.3,1.4,.5,1), color .2s; transform-origin: 50% 70%; }
+  .chip i { width: 14px; height: 14px; border-radius: 50%; display: block; flex: 0 0 auto;
+    transition: transform .25s cubic-bezier(.3,1.4,.5,1); }
+  .chip:not(.activ) { color: color-mix(in srgb, var(--text) 72%, transparent); }
+  .chip.activ { font-weight: 700; }
+  .chip.activ i { transform: scale(1.18); }
+  .seg:not(.dragging) .chip:active { transform: scale(.93); }
+
+  /* ---------- calendar (ca .cal-grid din MindMe) ---------- */
+  .calcard { padding: 12px 12px 12px; overflow: hidden; }
+  .grila { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px 5px; touch-action: pan-y; }
+  .grila.din-dreapta { animation: dinDreapta .26s cubic-bezier(.2,.9,.3,1); }
+  .grila.din-stanga { animation: dinStanga .26s cubic-bezier(.2,.9,.3,1); }
+  .luna.din-dreapta { animation: dinDreapta .26s cubic-bezier(.2,.9,.3,1); }
+  .luna.din-stanga { animation: dinStanga .26s cubic-bezier(.2,.9,.3,1); }
+  @keyframes dinDreapta { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes dinStanga { from { transform: translateX(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .grila .cap { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding: 2px 0 2px; }
+  .grila .cap.we { opacity: .55; }
+  .zi { aspect-ratio: 1 / 1; width: 100%; max-width: 46px; justify-self: center; display: grid; place-items: center;
+    font-size: 15px; font-weight: 600; border-radius: 50%; cursor: pointer; font-variant-numeric: tabular-nums;
+    background: var(--fill2); transition: transform .15s, background .2s, color .2s; }
+  .zi:active { transform: scale(.86); }
   .zi.gol { background: transparent; cursor: default; }
   .zi.gol:active { transform: none; }
   .zi.we { background: transparent; color: var(--muted); font-weight: 500; }
-  .zi.sarb { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); font-weight: 800; }
+  .zi.sarb { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red); font-weight: 800; }
   .zi.birou { background: var(--birou); color: #fff; }
   .zi.acasa { background: var(--acasa); color: #fff; }
   .zi.concediu { background: var(--concediu); color: #fff; }
   .zi.liber { background: var(--liber); color: #fff; }
-  .zi.azi { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); font-weight: 800; }
-  .zi.azi:not(.birou):not(.acasa):not(.concediu):not(.liber) { color: var(--accent); }
-  .progres { height: 6px; border-radius: 3px; background: var(--fill); margin: 14px 0 9px; overflow: hidden; }
-  .progres div { height: 100%; border-radius: 3px; background: var(--verde); width: 0; transition: width .3s ease; }
-  .stare { font-weight: 700; font-size: 15px; }
-  .detalii { font-size: 13px; color: var(--muted); margin-top: 4px; }
-  .info { font-size: 13px; color: var(--muted); min-height: 17px; margin-top: 8px; }
-  .footnote { font-size: 13px; color: var(--muted); margin: 8px 6px 0; }
+  .zi.azi { font-weight: 800; box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--accent); }
+  .zi.azi:not(.birou):not(.acasa):not(.concediu):not(.liber):not(.sarb) { color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent); }
+  .legenda { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; padding-top: 11px; border-top: .5px solid var(--line); }
+  .legenda span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+    padding: 3px 9px 3px 7px; border-radius: 20px; white-space: nowrap;
+    background: color-mix(in srgb, var(--cc) 13%, transparent); color: var(--cc); }
+  .legenda i { width: 9px; height: 9px; border-radius: 50%; background: var(--cc); display: block; }
+  .legenda .azi-l i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--cc); }
+  .info { display: none; }
+  .indiciu { font-size: 13px; color: var(--muted); margin: 8px 6px 0; }
 
-  /* ---------- total an: plăcuțe + tabel ---------- */
+  /* ---------- total an: plăcuțe (ca .tile) + tabel ---------- */
   .kpi { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .kpi > div { border-radius: 14px; padding: 11px 12px; --tc: var(--muted);
-    background: color-mix(in srgb, var(--tc) 11%, var(--card)); display: flex; flex-direction: column-reverse; justify-content: flex-end; }
+  .kpi > div { border-radius: 14px; padding: 11px 12px; --tc: var(--muted); min-width: 0;
+    background: color-mix(in srgb, var(--tc) 13%, var(--card)); display: flex; flex-direction: column-reverse; justify-content: flex-end; }
   .kpi > div:has(b.ok) { --tc: var(--green); }
   .kpi > div:has(b.rau) { --tc: var(--red); }
+  .kpi > div:nth-child(1) { --tc: var(--blue); }
   .kpi > div:nth-child(3) { --tc: var(--orange); }
   .kpi > div:nth-child(6) { --tc: var(--accent); }
   .kpi b { display: block; font-size: 20px; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .kpi small { font-size: 12px; font-weight: 700; color: var(--tc); line-height: 1.2; }
-  .kpi b.ok { color: var(--text); } .kpi b.rau { color: var(--text); }
-  .tabelcard { padding: 4px 0; margin-top: 10px; overflow: hidden; }
+  .kpi b.ok, .kpi b.rau { color: var(--text); }
+  .tabelcard { padding: 2px 0; margin-top: 10px; overflow: hidden; }
   table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
-  th { text-align: right; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; padding: 8px 14px 6px 4px; }
+  th { text-align: right; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; padding: 9px 14px 7px 4px; }
   th:first-child, td:first-child { text-align: left; padding-left: 14px; }
-  td { padding: 10px 14px 10px 4px; border-top: .5px solid var(--line); text-align: right; }
-  tr.luna-rand { cursor: pointer; transition: background .15s; }
+  td { padding: 11px 14px 11px 4px; border-top: .5px solid var(--line); text-align: right; transition: background .15s; }
+  tr.luna-rand { cursor: pointer; }
   tr.luna-rand:active td { background: var(--card2); }
-  tr.selectat td { background: color-mix(in srgb, var(--accent) 12%, var(--card)); font-weight: 700; }
+  tr.selectat td { background: color-mix(in srgb, var(--accent) 11%, var(--card)); font-weight: 700; }
   tr.selectat td:first-child { color: var(--accent); }
+  tr.selectat td:first-child::after { content: " ↺"; font-size: 13px; opacity: .55; font-weight: 600; }
+  tr.selectat.curenta td:first-child::after { content: ""; }
   .ok { color: var(--verde-inchis); } .rau { color: var(--rosu); }
   td.ok { font-weight: 700; }
+  td.ok::after { content: " ✓"; font-size: 12px; }
 
-  /* ---------- setări: formular în stil MindMe ---------- */
+  /* ---------- setări: grup MindMe cu rânduri + stepper ---------- */
   .form { background: var(--card); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
   .setari { display: block; }
-  .setari label { display: flex; align-items: center; gap: 10px; padding: 0 14px; min-height: 48px; position: relative; font-size: 16px; }
-  .setari label + label::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; border-top: .5px solid var(--line); }
-  .setari label span { flex: 1; min-width: 0; }
-  .setari input { width: 72px; flex: 0 0 auto; padding: 7px 10px; font-size: 16px; border: 0; border-radius: 8px;
-    background: var(--card2); text-align: center; outline: none; font-weight: 700; font-variant-numeric: tabular-nums;
+  .setari label, .setari .rd { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; min-height: 52px; position: relative; font-size: 16px; }
+  .setari > * + *::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; border-top: .5px solid var(--line); }
+  .setari label span, .setari .rd span { flex: 1; min-width: 0; }
+  .setari .rd small { display: block; font-size: 13px; color: var(--muted); margin-top: 1px; }
+  .setari .rd b { font-size: 15px; font-weight: 600; color: var(--muted); text-align: right; white-space: nowrap; }
+  .pas { display: flex; align-items: center; background: var(--field); border-radius: 10px; flex: 0 0 auto; }
+  .pas button { width: 36px; height: 34px; display: grid; place-items: center; color: var(--accent); font-size: 21px; font-weight: 600;
+    border-radius: 10px; transition: transform .15s, background .15s; }
+  .pas button:active { transform: scale(.86); background: var(--fill); }
+  .setari input { width: 40px; flex: 0 0 auto; padding: 6px 0; font-size: 16px; border: 0; border-radius: 8px;
+    background: transparent; text-align: center; outline: none; font-weight: 700; font-variant-numeric: tabular-nums;
     -webkit-appearance: none; appearance: none; -moz-appearance: textfield; }
-  @media (prefers-color-scheme: light) { .setari input { background: #EFEFF4; } }
-  .setari input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
+  .setari input::-webkit-inner-spin-button, .setari input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .setari input:focus { background: var(--card); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
+  .footnote { font-size: 13px; color: var(--muted); margin: 8px 6px 0; }
+
+  /* ---------- toast (deasupra barei plutitoare din MindMe) ---------- */
+  #toast { position: fixed; left: 12px; right: 12px; bottom: calc(var(--safe-b) + var(--jos) + 6px); max-width: 520px; margin: 0 auto;
+    padding: 12px 16px; border-radius: 14px; background: #2C2C2E; color: #fff; font-size: 15px; font-weight: 600; text-align: center;
+    z-index: 30; box-shadow: 0 8px 24px rgba(0,0,0,.25); transform: translateY(24px) scale(.96); opacity: 0;
+    transition: transform .28s cubic-bezier(.2,.9,.3,1), opacity .2s; pointer-events: none; }
+  #toast.show { transform: none; opacity: 1; }
+  @media (prefers-color-scheme: dark) { #toast { background: #3A3A3C; } }
+  @media (prefers-reduced-motion: reduce) { .grila, .luna { animation: none !important; } }
 </style>
 </head>
 <body>
 <main>
-  <section class="card navcard">
-    <div class="nav">
-      <button class="iconbtn" id="inapoi" aria-label="Luna anterioară"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-      <div class="luna" id="titluLuna"></div>
-      <button class="iconbtn" id="inainte" aria-label="Luna următoare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
-      <button class="azi" id="azi">Azi</button>
+  <!-- fără titlu: MindMe afișează deja numele listei deasupra -->
+  <div class="nav">
+    <div class="luna-wrap"><div class="luna" id="titluLuna"></div></div>
+    <button class="azi" id="azi">Azi</button>
+    <button class="iconbtn" id="inapoi" aria-label="Luna anterioară"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button class="iconbtn" id="inainte" aria-label="Luna următoare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+  </div>
+
+  <section class="medtoday" id="cardProg">
+    <div class="mt-top">
+      <div>
+        <div class="mt-l" id="progLabel"></div>
+        <div class="mt-v"><b id="progVal"></b><small>zile de birou bifate</small></div>
+      </div>
+      <div class="necesar"><small>Necesar</small><span class="insigna" id="insigna"></span></div>
     </div>
-    <div class="program">Program: L–V 09:00 – 18:00 · 8 h/zi · 40 h/săptămână</div>
+    <div class="progres"><div id="progres"></div></div>
+    <div class="stare" id="stare"></div>
+    <div class="detalii" id="detalii"></div>
   </section>
 
   <div class="sec-title">Marchează ziua ca</div>
   <div class="seg" id="segStari"><div class="segpill"></div><div class="chipuri" id="chipuri"></div></div>
 
-  <div class="sec-title rand"><span>Zile la birou în lună</span><span class="insigna" id="insigna"></span></div>
-  <section class="card" id="cardLuna">
+  <div class="sec-title">Calendar</div>
+  <section class="card calcard" id="cardLuna">
     <div class="grila" id="grila"></div>
-    <div class="progres"><div id="progres"></div></div>
-    <div class="stare" id="stare"></div>
-    <div class="detalii" id="detalii"></div>
+    <div class="legenda">
+      <span style="--cc:var(--birou)"><i></i>Birou</span>
+      <span style="--cc:var(--acasa)"><i></i>Acasă</span>
+      <span style="--cc:var(--concediu)"><i></i>Concediu</span>
+      <span style="--cc:var(--liber)"><i></i>Liber supl.</span>
+      <span style="--cc:var(--red)"><i></i>Sărbătoare</span>
+      <span class="azi-l" style="--cc:var(--accent)"><i></i>Azi</span>
+    </div>
     <div class="info" id="info"></div>
   </section>
+  <div class="indiciu">Atinge o zi ca s-o marchezi · glisează stânga/dreapta pentru altă lună.</div>
 
   <div class="sec-title" id="titluAn"></div>
   <section>
@@ -191,12 +264,16 @@
   <div class="sec-title">Setări</div>
   <section class="form">
     <div class="setari">
-      <label><span>Zile acasă / lună</span> <input type="number" id="setAcasa" min="0" max="23" inputmode="numeric"></label>
-      <label><span>Zile CO = −1 zi birou</span> <input type="number" id="setCo" min="1" max="10" inputmode="numeric"></label>
+      <label><span>Zile acasă / lună</span>
+        <span class="pas" style="flex:0 0 auto"><button type="button" data-pas="-1" aria-label="Mai puțin">−</button><input type="number" id="setAcasa" min="0" max="23" inputmode="numeric"><button type="button" data-pas="1" aria-label="Mai mult">+</button></span></label>
+      <label><span>Zile CO = −1 zi birou</span>
+        <span class="pas" style="flex:0 0 auto"><button type="button" data-pas="-1" aria-label="Mai puțin">−</button><input type="number" id="setCo" min="1" max="10" inputmode="numeric"><button type="button" data-pas="1" aria-label="Mai mult">+</button></span></label>
+      <div class="rd"><span>Program<small>8 h/zi · 40 h/săptămână</small></span><b>L–V 09:00 – 18:00</b></div>
     </div>
   </section>
   <div class="footnote">Datele se salvează automat pe telefon la fiecare modificare.</div>
 </main>
+<div id="toast" role="status" aria-live="polite"></div>
 <script>
 "use strict";
 const CHEIE = "calendarBirou.date";
@@ -268,6 +345,7 @@ const date = incarca();
 const azi = new Date();
 const keyAzi = iso(azi.getFullYear(), azi.getMonth() + 1, azi.getDate());
 let an = azi.getFullYear(), luna = azi.getMonth() + 1, pensula = "birou", sarb = sarbatoriLegale(an);
+let ultimaLuna = null;   // doar pentru animația la schimbarea lunii
 
 function deseneazaChipuri() {
   const c = $("chipuri"); c.innerHTML = "";
@@ -277,6 +355,14 @@ function deseneazaChipuri() {
     b.innerHTML = `<i style="background:${k ? `var(--${k})` : "#fff"};${k ? "" : "border:1px solid #999"}"></i>${nume}`;
     b.onclick = () => { pensula = k; deseneazaChipuri(); };
     c.appendChild(b);
+  }
+}
+
+// animație mică: luna nouă intră din dreapta (înainte) sau din stânga (înapoi)
+function animaLuna(dir) {
+  for (const el of [$("grila"), $("titluLuna")]) {
+    el.classList.remove("din-dreapta", "din-stanga"); void el.offsetWidth;
+    el.classList.add(dir > 0 ? "din-dreapta" : "din-stanga");
   }
 }
 
@@ -300,9 +386,16 @@ function deseneaza() {
     el.onclick = () => clickZi(zi);
     g.appendChild(el);
   }
+  const cheieLuna = an * 12 + luna;
+  if (ultimaLuna !== null && cheieLuna !== ultimaLuna) animaLuna(cheieLuna > ultimaLuna ? 1 : -1);
+  ultimaLuna = cheieLuna;
 
   const s = statisticiLuna(an, luna, date.zile, za, co, sarb);
   $("insigna").textContent = `${s.necesar} zile · ${s.necesar * ORE_PE_ZI} h`;
+  // card progres (doar afișare)
+  $("progLabel").textContent = `Bifate în ${LUNI[luna - 1].toLowerCase()}`;
+  $("progVal").textContent = `${s.birou} din ${s.necesar}`;
+  $("cardProg").dataset.st = s.ramas === 0 ? "ok" : (s.ramas > s.nemarcate ? "rau" : "");
   const p = $("progres");
   p.style.width = (s.necesar ? Math.min(100, 100 * s.birou / s.necesar) : 100) + "%";
   const st = $("stare");
@@ -319,10 +412,16 @@ function deseneaza() {
     const x = statisticiLuna(an, l, date.zile, za, co, sarb);
     for (const k in t) t[k] += x[k];
     const tr = document.createElement("tr");
-    tr.className = "luna-rand" + (l === luna ? " selectat" : "");
+    tr.className = "luna-rand" + (l === luna ? " selectat" : "") +
+      (an === azi.getFullYear() && l === azi.getMonth() + 1 ? " curenta" : "");
     tr.innerHTML = `<td>${LUNI[l - 1]}</td><td>${x.lucratoare}</td><td>${x.concediu}</td><td>${x.necesar}</td>` +
       `<td class="${x.ramas === 0 ? "ok" : ""}">${x.birou}</td>`;
-    tr.onclick = () => { luna = l; deseneaza(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+    tr.onclick = () => {
+      if (l === luna) {   // a doua atingere pe luna deja afișată → înapoi la luna curentă
+        an = azi.getFullYear(); luna = azi.getMonth() + 1; sarb = sarbatoriLegale(an);
+      } else luna = l;
+      deseneaza(); window.scrollTo({ top: 0, behavior: "smooth" });
+    };
     tb.appendChild(tr);
   }
   $("kpi").innerHTML = [
@@ -351,13 +450,13 @@ $("inapoi").onclick = () => mutaLuna(-1);
 $("inainte").onclick = () => mutaLuna(1);
 $("azi").onclick = () => { an = azi.getFullYear(); luna = azi.getMonth() + 1; sarb = sarbatoriLegale(an); deseneaza(); };
 
-// glisare stânga/dreapta pe calendar
-let x0 = null;
-$("grila").addEventListener("touchstart", e => { x0 = e.touches[0].clientX; }, { passive: true });
+// glisare stânga/dreapta pe calendar (doar dacă mișcarea e mai mult orizontală decât verticală)
+let x0 = null, y0 = null;
+$("grila").addEventListener("touchstart", e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
 $("grila").addEventListener("touchend", e => {
   if (x0 === null) return;
-  const dx = e.changedTouches[0].clientX - x0; x0 = null;
-  if (Math.abs(dx) > 60) mutaLuna(dx < 0 ? 1 : -1);
+  const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) mutaLuna(dx < 0 ? 1 : -1);
 });
 
 for (const [id, cheie, min] of [["setAcasa", "zile_acasa", 0], ["setCo", "co_per_zi", 1]]) {
@@ -381,16 +480,15 @@ deseneaza();
 </script>
 <script>
 "use strict";
-// Doar aspect: bula care alunecă sub butonul ales din „Marchează ziua ca” (+ tragere cu degetul).
+// ---------- Doar aspect / comportament UI (nu schimbă calculele) ----------
+
+// Bula care alunecă sub butonul ales din „Marchează ziua ca” + tragere cu degetul + efect de lupă (ca în MindMe).
 (() => {
   const seg = document.getElementById("segStari"), lista = document.getElementById("chipuri");
   const pill = seg.querySelector(".segpill");
   const butoane = () => Array.from(lista.querySelectorAll(".chip"));
-  function muta(b) {
-    if (!b) return;
-    pill.style.width = b.offsetWidth + "px"; pill.style.height = b.offsetHeight + "px";
-    pill.style.transform = `translate(${b.offsetLeft}px, ${b.offsetTop}px)`;
-  }
+  const pune = (x, y, w, h) => { pill.style.width = w + "px"; pill.style.height = h + "px"; pill.style.transform = `translate(${x}px, ${y}px)`; };
+  const muta = b => { if (b) pune(b.offsetLeft, b.offsetTop, b.offsetWidth, b.offsetHeight); };
   const actualizeaza = () => muta(lista.querySelector(".chip.activ"));
   seg.classList.add("noanim"); actualizeaza();
   requestAnimationFrame(() => requestAnimationFrame(() => seg.classList.remove("noanim")));
@@ -398,32 +496,72 @@ deseneaza();
   window.addEventListener("resize", () => { seg.classList.add("noanim"); actualizeaza(); requestAnimationFrame(() => seg.classList.remove("noanim")); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(actualizeaza);
 
-  // tragere: bula urmează degetul; la ridicare se alege butonul de sub deget
-  let start = null, tras = false, peste = null, blocheazaClick = false;
-  const subDeget = x => butoane().find(b => { const r = b.getBoundingClientRect(); return x >= r.left && x <= r.right; });
-  seg.addEventListener("pointerdown", e => { start = e.clientX; tras = false; peste = null; });
+  // lupă: butonul de sub deget crește, vecinii puțin, restul rămân normali (variază lin cu distanța)
+  function lupa(btns, x, max, reach) {
+    btns.forEach(b => {
+      const r = b.getBoundingClientRect();
+      const k = Math.max(0, 1 - Math.abs(x - (r.left + r.width / 2)) / (r.width * reach));
+      const s = 1 + (max - 1) * k * k * (3 - 2 * k);
+      b.style.transform = s > 1.001 ? `scale(${s.toFixed(3)}) translateY(${(-(s - 1) * 14).toFixed(1)}px)` : "";
+    });
+  }
+  const faraLupa = () => butoane().forEach(b => { b.style.transform = ""; });
+
+  let drag = null, blocheazaClick = false;
+  seg.addEventListener("pointerdown", e => { if (e.button > 0) return; drag = { id: e.pointerId, x: e.clientX, tras: false, peste: null }; });
   seg.addEventListener("pointermove", e => {
-    if (start === null) return;
-    if (!tras && Math.abs(e.clientX - start) < 8) return;
-    if (!tras) { tras = true; seg.classList.add("dragging"); try { seg.setPointerCapture(e.pointerId); } catch (_) {} }
-    const b = subDeget(e.clientX);
-    if (b && b !== peste) { if (peste) peste.classList.remove("over"); peste = b; b.classList.add("over"); muta(b); }
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.tras && Math.abs(e.clientX - drag.x) < 7) return;
+    if (!drag.tras) { drag.tras = true; seg.classList.add("dragging"); try { seg.setPointerCapture(e.pointerId); } catch (_) {} }
+    const btns = butoane(), sr = seg.getBoundingClientRect();
+    const b = btns.find(x => { const r = x.getBoundingClientRect(); return e.clientX >= r.left && e.clientX < r.right; })
+      || (e.clientX < sr.left + sr.width / 2 ? btns[0] : btns[btns.length - 1]);
+    if (b !== drag.peste) { drag.peste = b; try { navigator.vibrate && navigator.vibrate(6); } catch (_) {} }
+    lupa(btns, e.clientX, 1.15, 1.6);
+    const w = b.offsetWidth, left = Math.max(2, Math.min(seg.offsetWidth - w - 2, e.clientX - sr.left - w / 2));
+    pune(left, b.offsetTop, w, b.offsetHeight);   // bula urmează degetul
   });
   const termina = anulat => {
-    if (start === null) return;
-    start = null; seg.classList.remove("dragging");
-    if (peste) peste.classList.remove("over");
-    if (tras) {
-      blocheazaClick = true; setTimeout(() => { blocheazaClick = false; }, 350);
-      if (!anulat && peste) peste.click(); else actualizeaza();
-    }
-    tras = false; peste = null;
+    if (!drag) return;
+    const d = drag; drag = null;
+    seg.classList.remove("dragging"); faraLupa();
+    if (!d.tras) return;
+    blocheazaClick = true; setTimeout(() => { blocheazaClick = false; }, 350);
+    if (!anulat && d.peste) d.peste.click(); else actualizeaza();
   };
   seg.addEventListener("pointerup", () => termina(false));
   seg.addEventListener("pointercancel", () => termina(true));
   // după o tragere, browserul mai trimite un click „natural” — îl ignorăm
   seg.addEventListener("click", e => { if (blocheazaClick && e.isTrusted) { e.stopPropagation(); e.preventDefault(); } }, true);
 })();
+
+// Mesajele scrise în #info apar ca toast deasupra barei plutitoare din MindMe.
+(() => {
+  const info = document.getElementById("info"), toast = document.getElementById("toast");
+  let t = null;
+  new MutationObserver(() => {
+    const txt = info.textContent.trim();
+    if (!txt) return;
+    toast.textContent = txt; toast.classList.add("show");
+    clearTimeout(t); t = setTimeout(() => toast.classList.remove("show"), 2200);
+  }).observe(info, { childList: true, characterData: true, subtree: true });
+})();
+
+// Stepper − / + lângă câmpurile din Setări (folosește același eveniment „input” ca tastarea).
+document.querySelectorAll(".pas button").forEach(b => b.addEventListener("click", e => {
+  e.preventDefault();
+  const inp = b.parentElement.querySelector("input");
+  const min = +inp.min, max = +inp.max, v = parseInt(inp.value, 10);
+  const nou = Math.max(min, Math.min(max, (isNaN(v) ? min : v) + +b.dataset.pas));
+  if (nou === v) return;
+  inp.value = nou; inp.dispatchEvent(new Event("input"));
+}));
+
+// La scroll se închide tastatura (regulă MindMe).
+window.addEventListener("scroll", () => {
+  const a = document.activeElement;
+  if (a && a.tagName === "INPUT") a.blur();
+}, { passive: true });
 </script>
 </body>
 </html>

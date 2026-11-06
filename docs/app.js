@@ -1579,10 +1579,12 @@ function refreshSearch() {
 // ---------- mini-apps inside MindMe (Zile de concediu, Zile la birou) ----------
 // the mini-apps are single files now (easy to upload); old saved lists still point to the folder names
 const appUrlOf = c => ({ 'concediu/': 'concediu.html', 'birou/': 'birou.html' }[c.appUrl] || c.appUrl);
+// same header as every other list; the mini-app fills the rest of the screen and MindMe's
+// bottom bar stays on top of it, so it feels like one app
 function screenApp(c) {
   return `<div class="appview">
-    <div class="appbar"><button class="back" data-act="back">${ICON.back}Liste</button>
-      <div class="apptitle">${c.icon} ${esc(c.name)}</div><span class="appbar-sp"></span></div>
+    <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div><div class="right"></div></div>
+    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
     <iframe id="appframe" data-cat="${c.id}" src="${esc(appUrlOf(c))}" title="${esc(c.name)}"></iframe>
   </div>`;
 }

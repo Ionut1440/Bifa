@@ -332,14 +332,12 @@ button.chip { cursor: pointer; }
 #tabbar button { transform-origin: 50% 80%; }
 
 /* mini-apps (Zile de concediu, Zile la birou): full screen, slides in */
-.appview { position: fixed; inset: 0; z-index: 15; background: var(--bg); display: flex; flex-direction: column;
-  padding-top: var(--safe-t); padding-bottom: var(--safe-b); animation: appIn .34s cubic-bezier(.2,.9,.3,1); }
-@keyframes appIn { from { transform: translateX(28%); opacity: 0; } to { transform: none; opacity: 1; } }
-.appbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 46px; padding: 0 12px; flex: 0 0 auto; }
-.apptitle { font-weight: 700; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.appbar-sp { width: 60px; }
-.appview iframe { flex: 1; width: 100%; border: 0; background: var(--bg); display: block; }
-body.inapp #tabbar { display: none; }
+/* the list header on top, the mini-app below it down to the bottom edge; MindMe's bar floats over it */
+body.inapp { overflow: hidden; }
+body.inapp #app { padding-bottom: 0; }
+.appview { display: flex; flex-direction: column; height: calc(100dvh - var(--safe-t) - 8px); }
+.appview h1 { margin-bottom: 4px; }
+.appview iframe { flex: 1; min-height: 0; width: calc(100% + 32px); margin: 0 -16px; border: 0; background: var(--bg); display: block; }
 
 /* stats: month → lists that expand */
 .acc + .acc { border-top: .5px solid var(--line); }
