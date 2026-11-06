@@ -1,0 +1,508 @@
+'use strict';
+/* MindMe – Vacanțe: trips with a day-by-day program, ideas (restaurants, cafés, museums…),
+   tickets & documents (photos / PDF kept on the phone, also offline), packing list and budget.
+   Uses the helpers and state from app.js (db, ui, render, renderSheet, esc, chip, …). */
+
+const TRIP_TYPES = [
+  // key, icon, label, group  (group: transport | stay | visit | food | other)
+  ['flight', '✈️', 'Zbor', 'transport'],
+  ['train', '🚆', 'Tren', 'transport'],
+  ['bus', '🚌', 'Autobuz', 'transport'],
+  ['metro', '🚇', 'Metrou / transport local', 'transport'],
+  ['taxi', '🚕', 'Taxi / transfer', 'transport'],
+  ['car', '🚗', 'Mașină', 'transport'],
+  ['ferry', '⛴️', 'Feribot', 'transport'],
+  ['hotel', '🏨', 'Cazare', 'stay'],
+  ['museum', '🏛️', 'Muzeu', 'visit'],
+  ['sight', '🗺️', 'Obiectiv / atracție', 'visit'],
+  ['event', '🎫', 'Spectacol / eveniment', 'visit'],
+  ['activity', '🥾', 'Activitate', 'visit'],
+  ['beach', '🏖️', 'Plajă', 'visit'],
+  ['restaurant', '🍽️', 'Restaurant', 'food'],
+  ['cafe', '☕', 'Cafenea', 'food'],
+  ['bar', '🍸', 'Bar', 'food'],
+  ['shop', '🛍️', 'Cumpărături', 'other'],
+  ['doc', '📄', 'Document (pașaport, asigurare…)', 'other'],
+  ['note', '📝', 'Notă', 'other'],
+];
+const TT = Object.fromEntries(TRIP_TYPES.map(t => [t[0], { icon: t[1], label: t[2], group: t[3] }]));
+const isTransport = type => TT[type]?.group === 'transport';
+const TRIP_EMOJIS = ['🏖️', '🏝️', '🏔️', '⛷️', '🏙️', '🗼', '🗽', '🏛️', '🕌', '🌴', '🚢', '🏕️', '🎡', '🍷', '✈️', '🧳'];
+const TRIP_CURRENCIES = ['EUR', 'RON', 'USD', 'GBP', 'CHF', 'HUF', 'CZK', 'PLN', 'TRY', 'BGN'];
+const PACK_TEMPLATE = ['Pașaport / buletin', 'Bilete', 'Card și bani cash', 'Asigurare de călătorie', 'Permis de conducere', 'Încărcător telefon',
+  'Baterie externă', 'Adaptor priză', 'Căști', 'Medicamente', 'Periuță și pastă de dinți', 'Produse de igienă', 'Haine', 'Lenjerie',
+  'Pijama', 'Încălțăminte comodă', 'Geacă / hanorac', 'Costum de baie', 'Ochelari de soare', 'Cremă de protecție solară', 'Umbrelă',
+  'Sticlă de apă', 'Rucsac mic', 'Cheile de acasă'];
+
+const isTripCat = c => c?.kind === 'trips';
+const tripOf = e => e?.trip;
+function tripDays(t) {
+  const s = dayOf(t.start), e = dayOf(t.end || t.start);
+  const out = [];
+  for (let d = s, i = 0; d <= e && i < 120; d = addDays(d, 1), i++) out.push(new Date(d));
+  return out;
+}
+function tripStatus(t) {
+  const today = startOfDay(new Date());
+  const s = dayOf(t.start), e = dayOf(t.end || t.start);
+  const total = Math.round((e - s) / 86400000) + 1;
+  if (today < s) {
+    const n = Math.round((s - today) / 86400000);
+    return { state: 'future', text: n === 1 ? 'Mâine pleci! 🧳' : `Peste ${n} zile`, color: 'var(--blue)' };
+  }
+  if (today > e) return { state: 'past', text: 'Încheiată', color: 'var(--muted)' };
+  const n = Math.round((today - s) / 86400000) + 1;
+  return { state: 'now', text: `Ziua ${n} din ${total}`, color: 'var(--green)' };
+}
+const fDayMonth = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'short' });
+function tripRange(t) {
+  const s = dayOf(t.start), e = dayOf(t.end || t.start);
+  const yr = e.getFullYear() !== new Date().getFullYear() ? ' ' + e.getFullYear() : '';
+  return sameDay(s, e) ? fLong.format(s) : `${fDayMonth.format(s)} – ${fDayMonth.format(e)}${yr}`;
+}
+const tripItems = t => (t.items ||= []);
+const sortByTime = list => [...list].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99') || a.createdAt - b.createdAt);
+const mapsUrl = q => `https://maps.apple.com/?q=${encodeURIComponent(q)}`;
+
+// ---------- tickets & documents: files kept on the phone (IndexedDB), work offline ----------
+let fileDbP;
+function fileDb() {
+  return fileDbP ||= new Promise((res, rej) => {
+    const r = indexedDB.open('mindme-files', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('files');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function fileStore(mode, fn) {
+  const d = await fileDb();
+  return new Promise((res, rej) => {
+    const tx = d.transaction('files', mode);
+    const req = fn(tx.objectStore('files'));
+    tx.oncomplete = () => res(req?.result);
+    tx.onerror = () => rej(tx.error);
+  });
+}
+const filePut = (id, blob) => fileStore('readwrite', s => s.put(blob, id));
+const fileGet = id => fileStore('readonly', s => s.get(id));
+const fileDel = id => fileStore('readwrite', s => s.delete(id));
+const fileUrls = {};
+async function fileUrl(id) {
+  if (fileUrls[id]) return fileUrls[id];
+  const b = await fileGet(id);
+  if (!b) return null;
+  return (fileUrls[id] = URL.createObjectURL(b));
+}
+// after a render: put the picture thumbnails in place
+function tripAfterRender() {
+  document.querySelectorAll('[data-thumb]').forEach(async el => {
+    const u = await fileUrl(el.dataset.thumb).catch(() => null);
+    if (u && el.dataset.kind === 'image') el.style.backgroundImage = `url("${u}")`;
+  });
+}
+
+// ---------- screens ----------
+function currentTrip() { const e = ui.trip?.id ? entryById(ui.trip.id) : null; return e?.trip ? e : null; }
+
+function screenTrips(c) {
+  const open = currentTrip();
+  if (open && open.cat === c.id) return screenTripDetail(c, open);
+  ui.trip = null;
+  const col = colorOf(c);
+  const trips = db.entries.filter(e => e.cat === c.id && e.trip).sort((a, b) => a.trip.start.localeCompare(b.trip.start));
+  const by = { now: [], future: [], past: [] };
+  trips.forEach(e => by[tripStatus(e.trip).state].push(e));
+  by.past.reverse();
+  const card = e => {
+    const t = e.trip, st = tripStatus(t), items = tripItems(t);
+    const tickets = items.filter(i => i.ref || (i.files || []).length).length;
+    const packed = (t.packing || []).length ? `${t.packing.filter(p => p.done).length}/${t.packing.length} în bagaj` : '';
+    return `<div class="swipe" data-swipe="trip" data-id="${e.id}"><button class="swipe-del" data-act="tr-del-trip" data-id="${e.id}">${ICON.trash}<span>Șterge</span></button>
+      <div class="tripcard swipe-content" data-act="tr-open" data-id="${e.id}" style="--c:${col}">
+        <div class="tc-emoji">${t.emoji || '✈️'}</div>
+        <div class="tc-body"><div class="tc-dest">${esc(t.dest)}</div><div class="tc-dates">${esc(tripRange(t))}</div>
+          <div class="chips">${chip(st.text, st.color)}${items.length ? chip(`${items.length} în program`, 'var(--muted)') : ''}${tickets ? chip(`🎫 ${tickets}`, 'var(--purple)') : ''}${packed ? chip('🧳 ' + packed, 'var(--orange)') : ''}</div></div>
+        <span class="chev">${ICON.chev}</span></div></div>`;
+  };
+  const sec = (title, list) => list.length ? `<div class="sec-title">${title}</div><div class="tripcards">${list.map(card).join('')}</div>` : '';
+  return `
+    <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
+      <div class="right"><button class="iconbtn fill" style="background:${col}" data-act="tr-new" data-id="${c.id}">${ICON.plus}</button></div></div>
+    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    ${!trips.length ? `<div class="empty"><div class="big">🧳</div><b>Nicio vacanță încă</b>Adaugă una cu +: destinația și zilele. Apoi îți faci programul pe zile, pui biletele, lista de bagaj și bugetul.
+      <div class="mt"><button class="btn" style="background:${col}" data-act="tr-new" data-id="${c.id}">Planifică o vacanță</button></div></div>` : ''}
+    ${sec('Acum în vacanță', by.now)}${sec('Urmează', by.future)}${sec('Trecute', by.past)}`;
+}
+
+function itemRow(it, opts = {}) {
+  const tt = TT[it.type] || TT.note;
+  const chips = [];
+  if (isTransport(it.type) && (it.from || it.to)) chips.push(chip(`${it.from || '?'} → ${it.to || '?'}`, 'var(--blue)'));
+  if (it.ref) chips.push(chip('🎫 ' + it.ref, 'var(--purple)'));
+  if (it.place && !isTransport(it.type)) chips.push(chip('📍 ' + it.place, 'var(--muted)'));
+  if (it.cost) chips.push(chip(money(it.cost, it.currency) + (it.paid ? ' ✓' : ''), it.paid ? 'var(--green)' : 'var(--orange)'));
+  if ((it.files || []).length) chips.push(chip(`📎 ${it.files.length}`, 'var(--muted)'));
+  if (opts.showDay && it.day) chips.push(chip(fmtDay(dayOf(it.day)), 'var(--muted)'));
+  return `<div class="row trow ${it.done ? 'done' : ''}" data-act="tr-item" data-iid="${it.id}">
+    <button class="check ${it.done ? 'on' : ''}" style="--c:var(--accent)" data-act="tr-done" data-iid="${it.id}" aria-label="Făcut">${ICON.check}</button>
+    <div class="ticon">${tt.icon}</div>
+    <div class="rbody"><div class="rtitle">${esc(it.title || tt.label)}</div>${it.notes ? `<div class="rdetails">${esc(it.notes)}</div>` : ''}
+      ${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}</div>
+    ${it.time ? `<div class="dtime">${esc(it.time)}${it.endTime ? `<div class="tend">${esc(it.endTime)}</div>` : ''}</div>` : ''}
+  </div>`;
+}
+
+function screenTripDetail(c, e) {
+  const t = e.trip, col = colorOf(c), st = tripStatus(t);
+  const view = ui.trip.view || 'program';
+  const views = [['program', 'Program'], ['bilete', 'Bilete'], ['bagaj', 'Bagaj'], ['buget', 'Buget']];
+  let body = '';
+  if (view === 'program') body = tripProgramHtml(e);
+  else if (view === 'bilete') body = tripTicketsHtml(e);
+  else if (view === 'bagaj') body = tripPackingHtml(e);
+  else body = tripBudgetHtml(e);
+  return `
+    <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}${esc(c.name)}</button></div>
+      <div class="right"><button class="iconbtn" data-act="tr-menu" data-id="${e.id}">${ICON.more}</button>
+      <button class="iconbtn fill" style="background:${col}" data-act="tr-add" data-day="">${ICON.plus}</button></div></div>
+    <h1><span class="emo">${t.emoji || '✈️'}</span>${esc(t.dest)}</h1>
+    <div class="sub" style="margin-top:-6px">${esc(tripRange(t))} · <span style="color:${st.color};font-weight:700">${esc(st.text)}</span></div>
+    <div class="seg">${views.map(([k, l]) => `<button class="${view === k ? 'on' : ''}" data-act="tr-view" data-v="${k}">${l}</button>`).join('')}</div>
+    <div class="sl-in">${body}</div>`;
+}
+
+function tripProgramHtml(e) {
+  const t = e.trip, items = tripItems(t);
+  const today = new Date();
+  const days = tripDays(t).map((d, i) => {
+    const k = dkey(d);
+    const list = sortByTime(items.filter(it => it.day === k));
+    return `<div class="sec-title ${sameDay(d, today) ? 'orange' : ''}" ${sameDay(d, today) ? 'id="tr-today"' : ''}>Ziua ${i + 1} · ${esc(cap(fLong.format(d)))}${sameDay(d, today) ? ' · azi' : ''}</div>
+      <div class="group">${list.map(it => itemRow(it)).join('')}
+        <button class="linkrow" data-act="tr-add" data-day="${k}">${ICON.plus} Adaugă în ziua ${i + 1}</button></div>`;
+  }).join('');
+  // ideas: places you want to try, not on a day yet
+  const ideas = items.filter(it => !it.day && it.type !== 'doc');
+  const groups = [['food', '🍽️ Unde mănânci / bei'], ['visit', '🏛️ De văzut și de făcut'], ['stay', '🏨 Cazare'], ['transport', '🚆 Transport'], ['other', '📝 Altele']];
+  const ideasHtml = groups.map(([g, title]) => {
+    const list = ideas.filter(it => (TT[it.type]?.group || 'other') === g);
+    return list.length ? `<div class="fhead" style="margin-top:14px">${title}</div><div class="group">${sortByTime(list).map(it => itemRow(it)).join('')}</div>` : '';
+  }).join('');
+  return `${days}
+    <div class="sec-title" style="margin-top:28px">💡 Idei · de programat</div>
+    <div class="quickadd" style="--c:var(--accent)">
+      <button class="qa-plus" data-act="tr-idea-add" aria-label="Adaugă">${ICON.plus}</button>
+      <input id="tr-idea" type="text" placeholder="Restaurant, cafenea, muzeu… (ex: Cafe Central)" autocomplete="off" enterkeyhint="done">
+    </div>
+    <div class="quick wrap" style="--pink:var(--accent);padding:8px 0 0">${['restaurant', 'cafe', 'museum', 'sight', 'bar', 'beach', 'shop'].map(k => `<button data-act="tr-idea-type" data-v="${k}" class="${(ui.trip.ideaType || 'restaurant') === k ? 'on' : ''}">${TT[k].icon} ${TT[k].label}</button>`).join('')}</div>
+    ${ideasHtml || '<div class="footnote">Notează aici locurile pe care vrei să le încerci; apoi le pui pe o zi și o oră.</div>'}`;
+}
+
+function tripTicketsHtml(e) {
+  const items = tripItems(e.trip);
+  const tickets = sortByTime(items.filter(it => it.type !== 'doc' && (it.ref || (it.files || []).length || isTransport(it.type) || it.type === 'hotel' || it.type === 'museum' || it.type === 'event')))
+    .sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || (a.time || '').localeCompare(b.time || ''));
+  const docs = items.filter(it => it.type === 'doc');
+  const card = it => {
+    const tt = TT[it.type] || TT.note;
+    return `<div class="ticket" data-act="tr-item" data-iid="${it.id}">
+      <div class="tk-top"><span class="tk-ico">${tt.icon}</span><div class="tk-main"><div class="tk-title">${esc(it.title || tt.label)}</div>
+        <div class="tk-when">${it.day ? esc(cap(fLong.format(dayOf(it.day)))) : 'Fără dată'}${it.time ? ' · ' + esc(it.time) : ''}${it.endTime ? '–' + esc(it.endTime) : ''}</div></div></div>
+      ${isTransport(it.type) && (it.from || it.to) ? `<div class="tk-route"><b>${esc(it.from || '—')}</b><span>→</span><b>${esc(it.to || '—')}</b></div>` : ''}
+      ${it.ref ? `<div class="tk-ref"><span>Cod / loc / poartă</span><b>${esc(it.ref)}</b></div>` : ''}
+      ${(it.files || []).length ? `<div class="tk-files">${it.files.map(f => `<button class="tk-file" data-act="tr-file-open" data-fid="${f.id}" data-thumb="${f.id}" data-kind="${f.type.startsWith('image/') ? 'image' : 'doc'}">${f.type.startsWith('image/') ? '' : '📄'}</button>`).join('')}</div>` : ''}
+    </div>`;
+  };
+  return `
+    ${tickets.length ? tickets.map(card).join('') : `<div class="empty"><div class="big">🎫</div><b>Niciun bilet încă</b>Adaugă zboruri, trenuri, cazări sau muzee cu codul de rezervare și o poză / PDF cu biletul — le ai aici și fără internet.</div>`}
+    <div class="sec-title" style="margin-top:24px">📄 Documente</div>
+    ${docs.length ? docs.map(card).join('') : '<div class="footnote" style="margin-top:0">Pașaport, buletin, asigurare, permis — pune o poză, ca să le ai la îndemână.</div>'}
+    <button class="btn light block mt" data-act="tr-add-doc">＋ Adaugă document</button>`;
+}
+
+function tripPackingHtml(e) {
+  const t = e.trip;
+  const list = (t.packing ||= []);
+  const done = list.filter(p => p.done).length;
+  const have = new Set(list.map(p => norm(p.title)));
+  const sugg = PACK_TEMPLATE.filter(x => !have.has(norm(x)));
+  return `
+    ${list.length ? `<div class="medtoday" style="--c:var(--orange)"><div><div class="mt-l">În bagaj</div><div class="mt-v">${done} din ${list.length}</div></div>
+      <div class="mt-bar"><span style="width:${Math.round(done / list.length * 100)}%"></span></div></div>` : ''}
+    <div class="quickadd mt" style="--c:var(--orange)">
+      <button class="qa-plus" data-act="tr-pack-add" aria-label="Adaugă">${ICON.plus}</button>
+      <input id="tr-pack" type="text" placeholder="Ce iei cu tine?" autocomplete="off" enterkeyhint="done">
+    </div>
+    ${sugg.length ? `<div class="sl-title" style="margin:14px 4px 8px">Sugestii · atinge ca să adaugi</div>
+      <div class="quick wrap" style="--pink:var(--orange);padding:0">${sugg.map(x => `<button data-act="tr-pack-sugg" data-v="${esc(x)}">＋ ${esc(x)}</button>`).join('')}</div>` : ''}
+    ${list.length ? `<div class="sec-title">De pus în bagaj</div><div class="group">${list.map(p => `
+      <div class="row ${p.done ? 'done' : ''}" data-act="tr-pack-toggle" data-pid="${p.id}">
+        <button class="check ${p.done ? 'on' : ''}" style="--c:var(--orange)" data-act="tr-pack-toggle" data-pid="${p.id}">${ICON.check}</button>
+        <div class="rbody"><div class="rtitle">${esc(p.title)}</div></div>
+        <button class="x" data-act="tr-pack-del" data-pid="${p.id}" style="color:var(--muted);font-size:16px;width:30px">✕</button></div>`).join('')}</div>` : ''}`;
+}
+
+function tripBudgetHtml(e) {
+  const t = e.trip;
+  const items = tripItems(t).filter(it => +it.cost > 0);
+  const pairs = l => l.map(it => [+it.cost, it.currency || t.currency || 'EUR']);
+  const paid = items.filter(it => it.paid), unpaid = items.filter(it => !it.paid);
+  const groups = [['transport', '🚆 Transport'], ['stay', '🏨 Cazare'], ['visit', '🏛️ Vizite și activități'], ['food', '🍽️ Mâncare și băutură'], ['other', '🛍️ Altele']];
+  return `
+    <div class="tiles">
+      ${tile('Total', totals(pairs(items)), 'var(--accent)')}
+      ${tile('Plătit deja', totals(pairs(paid)), 'var(--green)')}
+      ${tile('De plătit', totals(pairs(unpaid)), 'var(--orange)')}
+      ${tile('Pe zi', tripDays(t).length && items.length ? totals(pairs(items).map(([a, cur]) => [a / tripDays(t).length, cur])) : '–', 'var(--blue)')}
+    </div>
+    ${groups.map(([g, title]) => {
+      const l = items.filter(it => (TT[it.type]?.group || 'other') === g);
+      return l.length ? `<div class="sec-title">${title} · ${esc(totals(pairs(l)))}</div><div class="group">${l.map(it => itemRow(it, { showDay: true })).join('')}</div>` : '';
+    }).join('')}
+    ${!items.length ? '<div class="empty"><div class="big">💶</div><b>Încă nu ai costuri</b>Pune prețul la bilete, cazare, muzee sau mese și aici vezi totalul, ce ai plătit și ce mai ai de plătit.</div>' : ''}`;
+}
+
+// ---------- Azi: today's plan while you're on holiday ----------
+function tripTodayHtml() {
+  const today = dkey(new Date());
+  const out = [];
+  for (const e of db.entries) {
+    if (!e.trip || !isTripCat(catById(e.cat)) || tripStatus(e.trip).state !== 'now') continue;
+    const list = sortByTime(tripItems(e.trip).filter(it => it.day === today));
+    out.push(`<div class="sec-title" style="color:var(--text);font-size:15px;text-transform:none;margin-top:24px">${e.trip.emoji || '✈️'} Azi în ${esc(e.trip.dest)} · ${esc(tripStatus(e.trip).text)}</div>
+      <div class="group">${list.length ? list.map(it => itemRow(it).replace('data-act="tr-item"', `data-act="tr-goto" data-id="${e.id}"`)).join('') : `<button class="linkrow" data-act="tr-goto" data-id="${e.id}">${ICON.plus} Fă-ți programul pentru azi</button>`}</div>`);
+  }
+  return out.join('');
+}
+
+// ---------- sheets: trip editor, item editor, file viewer ----------
+function tripSheetHtml(type) {
+  const s = ui.sheet;
+  if (type === 'tripedit') {
+    const d = s.d;
+    return `<div class="overlay"></div><div class="panel">
+      <div class="panel-head"><button data-act="sheet-close">Renunță</button><div class="t">${s.isNew ? 'Vacanță nouă' : 'Editează vacanța'}</div>
+        <button class="save" data-act="tr-save-trip" ${d.dest.trim() ? '' : 'disabled'}>Salvează</button></div>
+      <div class="panel-body">
+        <div class="form"><div class="field"><input type="text" id="f-title" class="titlein" data-tb="dest" placeholder="Unde mergi? (ex: Roma)" value="${esc(d.dest)}"></div></div>
+        <div class="tr-emojis">${TRIP_EMOJIS.map(x => `<button class="${d.emoji === x ? 'on' : ''}" data-act="tr-emoji" data-v="${x}">${x}</button>`).join('')}</div>
+        <div class="fhead">Când</div>
+        <div class="form">
+          <div class="field"><span class="lbl">Plecare</span><input type="date" data-tb="start" value="${esc(d.start)}"></div>
+          <div class="field"><span class="lbl">Întoarcere</span><input type="date" data-tb="end" value="${esc(d.end)}"></div>
+        </div>
+        <div class="form" style="margin-top:14px">
+          <div class="field"><span class="lbl">Moneda locală</span><select data-tb="currency">${TRIP_CURRENCIES.map(x => `<option ${x === d.currency ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+          <div class="field"><input type="text" data-tb="notes" placeholder="Notițe (ex: cu cine mergi, cazarea…)" value="${esc(d.notes || '')}"></div>
+        </div>
+        ${!s.isNew ? '<button class="btn red block mt" data-act="tr-del-trip-sheet">Șterge vacanța</button>' : ''}
+      </div></div>`;
+  }
+  if (type === 'tripitem') {
+    const d = s.d, e = entryById(s.tripId), t = e.trip;
+    const tt = TT[d.type] || TT.note;
+    const dayOpts = [['', 'Neprogramat (idee)'], ...tripDays(t).map((x, i) => [dkey(x), `Ziua ${i + 1} · ${cap(fLong.format(x))}`])];
+    const tr = isTransport(d.type);
+    return `<div class="overlay"></div><div class="panel">
+      <div class="panel-head"><button data-act="sheet-close">Renunță</button><div class="t">${s.isNew ? 'Adaugă' : 'Editează'}</div>
+        <button class="save" data-act="tr-save-item">Salvează</button></div>
+      <div class="panel-body">
+        <div class="tr-types">${TRIP_TYPES.map(([k, ic, lbl]) => `<button class="${d.type === k ? 'on' : ''}" data-act="tr-type" data-v="${k}"><span>${ic}</span>${esc(lbl.split(' (')[0].split(' / ')[0])}</button>`).join('')}</div>
+        <div class="form" style="margin-top:12px">
+          <div class="field"><input type="text" id="f-title" class="titlein" data-tb="title" placeholder="${esc(tt.label)}${tr ? ' (ex: Wizz W6 3141)' : d.type === 'restaurant' ? ' (ex: Da Enzo)' : ''}" value="${esc(d.title)}"></div>
+          <div class="field"><input type="text" data-tb="notes" placeholder="Detalii (opțional)" value="${esc(d.notes || '')}"></div>
+        </div>
+        <div class="fhead">Când</div>
+        <div class="form">
+          <div class="field"><span class="lbl">Ziua</span><select data-tb="day" style="max-width:66%">${dayOpts.map(([k, l]) => `<option value="${k}" ${d.day === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+          <div class="field"><span class="lbl">${tr ? 'Plecare' : d.type === 'hotel' ? 'Check-in' : 'Ora'}</span><input type="time" data-tb="time" value="${esc(d.time || '')}"></div>
+          <div class="field"><span class="lbl">${tr ? 'Sosire' : d.type === 'hotel' ? 'Check-out' : 'Până la'}</span><input type="time" data-tb="endTime" value="${esc(d.endTime || '')}"></div>
+        </div>
+        ${tr ? `<div class="fhead">Traseu</div><div class="form">
+          <div class="field"><input type="text" data-tb="from" placeholder="De la (ex: OTP București)" value="${esc(d.from || '')}"></div>
+          <div class="field"><input type="text" data-tb="to" placeholder="Până la (ex: FCO Roma)" value="${esc(d.to || '')}"></div></div>` : ''}
+        ${d.type !== 'note' ? `<div class="fhead">${tr ? 'Rezervare' : 'Loc și rezervare'}</div><div class="form">
+          ${!tr ? `<div class="field"><input type="text" data-tb="place" placeholder="Adresă sau loc (pentru hărți)" value="${esc(d.place || '')}"></div>` : ''}
+          <div class="field"><input type="text" data-tb="ref" placeholder="Cod rezervare / loc / poartă" value="${esc(d.ref || '')}" autocapitalize="characters"></div>
+          ${!tr && (d.place || d.title) ? `<a class="linkrow" href="${mapsUrl(d.place || (d.title + ' ' + t.dest))}" target="_blank" rel="noopener">🗺️ Deschide în Hărți</a>` : ''}
+        </div>` : ''}
+        <div class="fhead">Cost</div>
+        <div class="form">
+          <div class="field"><input type="text" inputmode="decimal" class="amountin" data-tb="costText" placeholder="Preț (opțional)" value="${esc(d.costText || '')}">
+            <select data-tb="currency" style="max-width:90px">${TRIP_CURRENCIES.map(x => `<option ${x === d.currency ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+          <div class="field"><span class="lbl">Plătit deja</span>${trSw('paid', d.paid)}</div>
+        </div>
+        <div class="fhead">Bilete și fișiere</div>
+        <div class="form">
+          ${(d.files || []).map(f => `<div class="field"><span class="ico">${f.type.startsWith('image/') ? '🖼️' : '📄'}</span>
+            <button class="lbl" style="text-align:left;color:var(--accent)" data-act="tr-file-open" data-fid="${f.id}">${esc(f.name)}</button>
+            <button class="x" data-act="tr-file-del" data-fid="${f.id}" style="color:var(--muted);font-size:16px;width:30px">✕</button></div>`).join('')}
+          <button class="linkrow" data-act="tr-file-add">📎 Adaugă bilet (poză sau PDF)</button>
+        </div>
+        <div class="ffoot">Fișierele rămân pe telefon și se deschid și fără internet.</div>
+        ${!s.isNew ? `<div class="form" style="margin-top:20px"><div class="field"><span class="lbl">Făcut</span>${trSw('done', d.done)}</div></div>
+          <button class="btn red block mt" data-act="tr-del-item">Șterge</button>` : ''}
+      </div></div>`;
+  }
+  if (type === 'tripfile') {
+    return `<div class="overlay"></div><div class="panel">
+      <div class="panel-head"><button data-act="sheet-close">Închide</button><div class="t">${esc(s.name || 'Bilet')}</div><span style="min-width:70px"></span></div>
+      <div class="panel-body" style="padding:0 0 30px">
+        ${s.url ? (s.isImage ? `<img src="${s.url}" alt="" style="width:100%;display:block;pointer-events:auto">` :
+          `<iframe src="${s.url}" style="width:100%;height:75dvh;border:0;background:#fff"></iframe>
+           <a class="btn block mt" href="${s.url}" target="_blank" rel="noopener" style="margin:12px 16px 0">Deschide documentul</a>`) : '<div class="empty">Fișierul nu mai există pe telefon.</div>'}
+      </div></div>`;
+  }
+  return '';
+}
+const trSw = (field, on) => `<label class="sw"><input type="checkbox" data-tb="${field}" ${on ? 'checked' : ''}><span></span></label>`;
+
+// ---------- actions ----------
+function openTripEditor(catId, tripId) {
+  const e = tripId ? entryById(tripId) : null;
+  const t = e?.trip;
+  const today = new Date();
+  ui.sheet = { type: 'tripedit', isNew: !e, catId, tripId,
+    d: { dest: t?.dest || '', emoji: t?.emoji || '🏖️', start: t?.start || dkey(addDays(today, 14)), end: t?.end || dkey(addDays(today, 18)), currency: t?.currency || 'EUR', notes: t?.notes || '' } };
+  renderSheet();
+  if (!e) setTimeout(() => document.getElementById('f-title')?.focus(), 300);
+}
+function openTripItem(tripId, itemId, day, type) {
+  const e = entryById(tripId);
+  const it = itemId ? tripItems(e.trip).find(x => x.id === itemId) : null;
+  ui.sheet = { type: 'tripitem', tripId, isNew: !it,
+    d: it ? { ...clone(it), costText: it.cost ? String(it.cost).replace('.', ',') : '' }
+      : { id: null, type: type || (day ? 'sight' : 'restaurant'), title: '', notes: '', day: day || '', time: '', endTime: '', from: '', to: '', place: '', ref: '', costText: '', currency: e.trip.currency || 'EUR', paid: false, files: [], done: false } };
+  renderSheet();
+}
+function saveTripItem() {
+  const s = ui.sheet, d = s.d, e = entryById(s.tripId);
+  const items = tripItems(e.trip);
+  const data = { type: d.type, title: (d.title || '').trim(), notes: (d.notes || '').trim(), day: d.day || '', time: d.time || '', endTime: d.endTime || '',
+    from: (d.from || '').trim(), to: (d.to || '').trim(), place: (d.place || '').trim(), ref: (d.ref || '').trim(),
+    cost: parseAmount(d.costText), currency: d.currency, paid: !!d.paid, files: d.files || [], done: !!d.done };
+  if (!data.title) data.title = TT[d.type]?.label || 'Activitate';
+  if (d.id) Object.assign(items.find(x => x.id === d.id), data);
+  else items.push({ id: uid(), createdAt: Date.now(), ...data });
+  save(); closeSheet(); toast('Salvat ✓');
+}
+async function addTripFiles() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*,application/pdf'; inp.multiple = true;
+  inp.onchange = async () => {
+    for (const f of inp.files) {
+      if (f.size > 25 * 1024 * 1024) { toast('Fișierul e prea mare (max 25 MB)'); continue; }
+      const id = 'f' + uid();
+      try { await filePut(id, f); } catch (err) { toast('Nu am putut salva fișierul'); continue; }
+      (ui.sheet.d.files ||= []).push({ id, name: f.name || 'bilet', type: f.type || 'application/octet-stream' });
+    }
+    try { navigator.storage?.persist?.(); } catch (err) { /* ignore */ }
+    renderSheet();
+  };
+  inp.click();
+}
+async function openTripFile(fid) {
+  const back = ui.sheet;
+  let meta = null;
+  for (const e of db.entries) for (const it of e.trip?.items || []) for (const f of it.files || []) if (f.id === fid) meta = f;
+  meta ||= (back?.d?.files || []).find(f => f.id === fid);
+  const url = await fileUrl(fid).catch(() => null);
+  ui.sheet = { type: 'tripfile', url, name: meta?.name, isImage: (meta?.type || '').startsWith('image/'), back: back?.type === 'tripitem' ? back : null };
+  renderSheet();
+}
+
+// the trip that holds an item (also when you tap it from the Azi screen)
+function tripOfItem(iid) { return db.entries.find(e => e.trip && tripItems(e.trip).some(x => x.id === iid)); }
+
+function tripClick(act, el) {
+  const s = ui.sheet;
+  const cur = currentTrip() || (el.dataset.iid ? tripOfItem(el.dataset.iid) : null);
+  switch (act) {
+    case 'tr-new': openTripEditor(el.dataset.id); break;
+    case 'tr-open': ui.trip = { id: el.dataset.id, view: 'program' }; render(); scroller().scrollTo(0, 0);
+      setTimeout(() => document.getElementById('tr-today')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120); break;
+    case 'tr-goto': { const e = entryById(el.dataset.id); if (e) { ui.tab = 'lists'; ui.catId = e.cat; ui.trip = { id: e.id, view: 'program' }; render(); scroller().scrollTo(0, 0);
+      setTimeout(() => document.getElementById('tr-today')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 120); } break; }
+    case 'tr-view': ui.trip.view = el.dataset.v; render(); break;
+    case 'tr-menu': openActions(cur?.trip.dest || '', [
+      { label: '✏️ Editează vacanța', run: () => openTripEditor(cur.cat, cur.id) },
+      { label: '🧳 Pune lista de bagaj obișnuită', run: () => { const p = (cur.trip.packing ||= []); const have = new Set(p.map(x => norm(x.title)));
+        PACK_TEMPLATE.forEach(x => { if (!have.has(norm(x))) p.push({ id: uid(), title: x, done: false }); }); save(); ui.trip.view = 'bagaj'; render(); } },
+      { label: '🗑 Șterge vacanța', danger: true, run: () => confirmDeleteTrip(cur.id) },
+    ]); break;
+    case 'tr-emoji': s.d.emoji = el.dataset.v; renderSheet(); break;
+    case 'tr-save-trip': {
+      const d = s.d;
+      if (!d.dest.trim()) return;
+      if (d.end < d.start) d.end = d.start;
+      let e = s.tripId ? entryById(s.tripId) : null;
+      if (!e) {
+        e = { id: uid(), createdAt: Date.now(), cat: s.catId, title: d.dest.trim(), details: '', group: '', done: false, hasDeadline: false, hasReminder: false,
+          hasAmount: false, amount: 0, currency: 'RON', subs: [], vendor: '', tracking: '', priority: 0, repeat: 'none', trip: { items: [], packing: [] } };
+        db.entries.push(e);
+      }
+      Object.assign(e.trip, { dest: d.dest.trim(), emoji: d.emoji, start: d.start, end: d.end, currency: d.currency, notes: d.notes });
+      e.title = d.dest.trim();
+      save(); closeSheet(); ui.trip = { id: e.id, view: 'program' }; render(); toast('Vacanța e salvată ✓');
+      break;
+    }
+    case 'tr-del-trip': case 'tr-del-trip-sheet': confirmDeleteTrip(el.dataset.id || s?.tripId); break;
+    case 'tr-add': openTripItem(cur.id, null, el.dataset.day || ''); break;
+    case 'tr-add-doc': openTripItem(cur.id, null, '', 'doc'); break;
+    case 'tr-item': openTripItem(cur.id, el.dataset.iid); break;
+    case 'tr-done': { const it = tripItems(cur.trip).find(x => x.id === el.dataset.iid); if (it) { it.done = !it.done; save(); render(); } break; }
+    case 'tr-type': s.d.type = el.dataset.v; renderSheet(); break;
+    case 'tr-save-item': saveTripItem(); break;
+    case 'tr-del-item': openActions(`Ștergi „${s.d.title || 'elementul'}”?`, [{ label: '🗑 Șterge', danger: true, run: () => {
+      const e = entryById(s.tripId); e.trip.items = tripItems(e.trip).filter(x => x.id !== s.d.id); (s.d.files || []).forEach(f => fileDel(f.id).catch(() => {})); save(); render(); toast('Șters'); } }]); break;
+    case 'tr-file-add': addTripFiles(); break;
+    case 'tr-file-open': openTripFile(el.dataset.fid); break;
+    case 'tr-file-del': s.d.files = (s.d.files || []).filter(f => f.id !== el.dataset.fid); fileDel(el.dataset.fid).catch(() => {}); renderSheet(); break;
+    case 'tr-idea-type': ui.trip.ideaType = el.dataset.v; render(); document.getElementById('tr-idea')?.focus(); break;
+    case 'tr-idea-add': addIdea(); break;
+    case 'tr-pack-add': addPack(document.getElementById('tr-pack')?.value); break;
+    case 'tr-pack-sugg': addPack(el.dataset.v); break;
+    case 'tr-pack-toggle': { const p = (cur.trip.packing || []).find(x => x.id === el.dataset.pid); if (p) { p.done = !p.done; save(); render(); } break; }
+    case 'tr-pack-del': cur.trip.packing = (cur.trip.packing || []).filter(x => x.id !== el.dataset.pid); save(); render(); break;
+  }
+}
+function addIdea() {
+  const cur = currentTrip(), inp = document.getElementById('tr-idea');
+  const title = (inp?.value || '').trim();
+  if (!cur || !title) return;
+  tripItems(cur.trip).push({ id: uid(), createdAt: Date.now(), type: ui.trip.ideaType || 'restaurant', title, notes: '', day: '', time: '', endTime: '',
+    from: '', to: '', place: '', ref: '', cost: 0, currency: cur.trip.currency || 'EUR', paid: false, files: [], done: false });
+  save(); render(); document.getElementById('tr-idea')?.focus(); toast(`${title} → idei`);
+}
+function addPack(text) {
+  const cur = currentTrip();
+  const title = (text || '').trim();
+  if (!cur || !title) return;
+  const p = (cur.trip.packing ||= []);
+  if (!p.some(x => norm(x.title) === norm(title))) p.push({ id: uid(), title, done: false });
+  save(); render(); document.getElementById('tr-pack')?.focus();
+}
+function confirmDeleteTrip(id) {
+  const e = entryById(id);
+  if (!e) return;
+  openActions(`Ștergi vacanța „${e.trip.dest}” cu tot programul și biletele ei? Nu se poate anula.`, [{ label: '🗑 Șterge vacanța', danger: true, run: () => {
+    tripItems(e.trip).forEach(it => (it.files || []).forEach(f => fileDel(f.id).catch(() => {})));
+    db.entries = db.entries.filter(x => x.id !== id); ui.trip = null; save(); render(); toast('Vacanța a fost ștearsă');
+  } }]);
+}
+// form fields of the trip sheets (data-tb)
+function tripBind(t, isChange) {
+  const s = ui.sheet;
+  if (!s || !s.d) return false;
+  const k = t.dataset.tb;
+  s.d[k] = t.type === 'checkbox' ? t.checked : t.value;
+  if (k === 'dest' || k === 'title') { const b = document.querySelector('.panel-head .save'); if (b && k === 'dest') b.disabled = !t.value.trim(); }
+  if (isChange && (t.type === 'checkbox' || t.tagName === 'SELECT') && k !== 'currency') renderSheet();
+  return true;
+}
+function tripKey(ev) {
+  if (ev.key !== 'Enter') return false;
+  if (ev.target.id === 'tr-idea') { ev.preventDefault(); addIdea(); return true; }
+  if (ev.target.id === 'tr-pack') { ev.preventDefault(); addPack(ev.target.value); return true; }
+  return false;
+}

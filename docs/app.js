@@ -79,6 +79,7 @@ const TEMPLATES = {
   reminder: { label: 'Remindere', icon: '🔔', color: 4 },
   meds: { label: 'Medicamente', icon: '💊', color: 6 },
   shopping: { label: 'Cumpărături', icon: '🛒', color: 2 },
+  trips: { label: 'Vacanțe', icon: '✈️', color: 6 },
   leave: { label: 'Zile de concediu', icon: '🏖️', color: 6 },
   office: { label: 'Zile la birou', icon: '🏢', color: 0 },
   blank: { label: 'Listă simplă', icon: '📁', color: 5 },
@@ -109,6 +110,7 @@ function templateRules(t) {
   // "app" lists open a full mini-app (the Concediu / Calendar Birou apps) inside MindMe
   if (t === 'leave') set({ kind: 'app', appUrl: 'concediu.html', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false });
   if (t === 'office') set({ kind: 'app', appUrl: 'birou.html', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false });
+  if (t === 'trips') set({ kind: 'trips', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false, placeholder: 'Destinația' });
   if (t === 'shopping') set({ kind: 'shopping', usesDeadline: false, reminderMode: 'off', usesGroups: true, groupMode: 'group', summary: false, placeholder: 'Ce cumperi?', doneLabel: 'În coș' });
   if (t === 'meds') set({ kind: 'meds', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false, placeholder: 'Numele medicamentului', doneLabel: 'Oprit' });
   return r;
@@ -123,11 +125,11 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw);
-      if (d && Array.isArray(d.categories) && Array.isArray(d.entries)) return addAppListsOnce(addShoppingListOnce(addMedsListOnce(d)));
+      if (d && Array.isArray(d.categories) && Array.isArray(d.entries)) return addTripsListOnce(addAppListsOnce(addShoppingListOnce(addMedsListOnce(d))));
     }
   } catch (e) { /* ignore */ }
-  const d = { v: 1, categories: [], entries: [], medsAdded: true, shopAdded: true, appsAdded: true };
-  ['task', 'shopping', 'order', 'payment', 'note', 'reminder', 'meds', 'leave', 'office'].forEach((t, i) => {
+  const d = { v: 1, categories: [], entries: [], medsAdded: true, shopAdded: true, appsAdded: true, tripsAdded: true };
+  ['task', 'shopping', 'order', 'payment', 'note', 'reminder', 'meds', 'trips', 'leave', 'office'].forEach((t, i) => {
     d.categories.push({ id: uid(), name: TEMPLATES[t].label, icon: TEMPLATES[t].icon, color: TEMPLATES[t].color, order: i, ...templateRules(t) });
   });
   return d;
@@ -253,6 +255,17 @@ function addShoppingListOnce(d) {
   try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* ignore */ }
   return d;
 }
+// existing users get "Vacanțe" once
+function addTripsListOnce(d) {
+  if (d.tripsAdded) return d;
+  if (!d.categories.some(c => c.kind === 'trips')) {
+    const order = Math.max(-1, ...d.categories.map(c => c.order || 0)) + 1;
+    d.categories.push({ id: uid(), name: TEMPLATES.trips.label, icon: TEMPLATES.trips.icon, color: TEMPLATES.trips.color, order, ...templateRules('trips') });
+  }
+  d.tripsAdded = true;
+  try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* ignore */ }
+  return d;
+}
 // existing users get "Zile de concediu" + "Zile la birou" once, at the end of the lists
 function addAppListsOnce(d) {
   if (d.appsAdded) return d;
@@ -288,6 +301,7 @@ const catById = id => db.categories.find(c => c.id === id);
 // how many things are still open in a list (medicines: treatments in progress; mini-apps: 0)
 function activeCount(c) {
   if (c.kind === 'app') return 0;
+  if (c.kind === 'trips') return db.entries.filter(e => e.cat === c.id && e.trip && typeof tripStatus === 'function' && tripStatus(e.trip).state !== 'past').length;
   if (c.kind === 'meds') return db.entries.filter(e => e.cat === c.id && e.med && medStatus(e).state === 'active').length;
   return db.entries.filter(e => e.cat === c.id && !e.done).length;
 }
@@ -720,6 +734,7 @@ function screenToday() {
       ${tile('7 zile', wk.length, 'var(--blue)')}
     </div>
     ${!ov.length && !td.length && !wk.length && !dosesOn(new Date()).length ? `<div class="empty"><div class="big">☀️</div><b>Ziua e liberă</b>Nimic întârziat sau programat în zilele următoare.</div>` : ''}
+    ${typeof tripTodayHtml === 'function' ? tripTodayHtml() : ''}
     ${medsTodayHtml()}
     ${sec('Întârziate', ov, 'red')}
     ${sec('Azi', td, 'orange')}
@@ -743,6 +758,10 @@ function screenLists() {
     let sub = active.length ? `${active.length} ${active.length === 1 ? 'activ' : 'active'}` : 'Totul e bifat ✓';
     if (today) sub += ` · ${today} azi`;
     if (over) sub += ` · ${over} întârziat${over === 1 ? '' : 'e'}`;
+    if (c.kind === 'trips') {
+      const next = db.entries.filter(e => e.cat === c.id && e.trip && tripStatus(e.trip).state !== 'past').sort((a, b) => a.trip.start.localeCompare(b.trip.start))[0];
+      sub = next ? `${next.trip.emoji || '✈️'} ${next.trip.dest} · ${tripStatus(next.trip).text}` : 'Planifică o vacanță';
+    }
     if (c.kind === 'app') sub = appUrlOf(c) === 'birou.html' ?'Zile de birou pe lună, după reguli' : 'Sold, calendar și idei de punți';
     if (isMedCat(c)) {
       const running = items.filter(e => e.med && medStatus(e).state === 'active').length;
@@ -820,6 +839,7 @@ function screenCategory(c) {
   if (isMedCat(c)) return screenMeds(c);
   if (isShopCat(c)) return screenShopping(c);
   if (c.kind === 'app') return screenApp(c);
+  if (c.kind === 'trips' && typeof screenTrips === 'function') return screenTrips(c);
   const all = db.entries.filter(e => e.cat === c.id);
   const active = all.filter(e => !e.done);
   const col = colorOf(c);
@@ -889,6 +909,7 @@ function render() {
   scroller().scrollTo(0, ui.searching ? 0 : y);
   renderTabbar();
   initSegs(app);
+  if (typeof tripAfterRender === 'function') tripAfterRender();
 }
 
 // ---------- main header: title + "+" on one row, full-width search bar below (like WhatsApp) ----------
@@ -1041,7 +1062,7 @@ function placePill(btn, x) {
 function switchTab(id) {
   if (ui.tab === id && !ui.catId) { scroller().scrollTo({ top: 0, behavior: 'smooth' }); return; }
   ui.tab = id; ui.catId = null; ui.reorder = false; ui.search = '';
-  ui.searching = false; ui.searchQ = ''; ui.searchFilter = null;
+  ui.searching = false; ui.searchQ = ''; ui.searchFilter = null; ui.trip = null;
   document.getElementById('tabbar')?.classList.remove('compact');
   render();
   scroller().scrollTo(0, 0);
@@ -2436,13 +2457,15 @@ function renderSheet() {
   const scroll = body ? body.scrollTop : 0;
   const t = ui.sheet.type;
   el.innerHTML = t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml()
-    : t === 'search' ? searchSheetHtml() : t === 'med' ? medSheetHtml() : t === 'myprod' ? myProductsSheetHtml() : actionsHtml();
+    : t === 'search' ? searchSheetHtml() : t === 'med' ? medSheetHtml() : t === 'myprod' ? myProductsSheetHtml()
+    : t.startsWith('trip') ? tripSheetHtml(t) : actionsHtml();
   const nb = el.querySelector('.panel-body');
   if (nb) nb.scrollTop = scroll;
   // no slide animation on re-render
   if (body) el.querySelectorAll('.panel, .overlay').forEach(x => (x.style.animation = 'none'));
   document.body.style.overflow = 'hidden';
   initSegs(el);
+  if (typeof tripAfterRender === 'function') tripAfterRender();
 }
 function closeSheet() { ui.sheet = null; ui.pendingRerender = false; renderSheet(); render(); }
 
@@ -2614,8 +2637,10 @@ document.addEventListener('click', ev => {
     case 'set-confirm': db.settings = { ...(db.settings || {}), confirmCheck: !db.settings?.confirmCheck }; save(); render(); break;
     case 'sub': { const e = entryById(id); if (e) { toggleSub(e, el.dataset.sid); render(); } break; }
     case 'alarm': { const e = entryById(id); if (e) addAlarm(e); break; }
-    case 'open-cat': ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); scroller().scrollTo(0, 0); break;
-    case 'back': ui.catId = null; render(); scroller().scrollTo(0, 0); break;
+    case 'open-cat': ui.trip = null; ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); scroller().scrollTo(0, 0); break;
+    case 'back':
+      if (ui.trip) { ui.trip = null; render(); scroller().scrollTo(0, 0); break; }   // from a trip back to the list of trips
+      ui.catId = null; render(); scroller().scrollTo(0, 0); break;
     case 'new': openEntry(id); break;
     case 'new-pick': {
       const list = el.dataset.rem ? cats().filter(c => c.reminderMode !== 'off').sort((a, b) => (b.reminderMode === 'always') - (a.reminderMode === 'always')) : cats();
@@ -2649,7 +2674,9 @@ document.addEventListener('click', ev => {
       break;
     }
     case 'action': { const a = s?.actions?.[+el.dataset.i]; ui.sheet = null; renderSheet(); render(); a?.run(); break; }
-    case 'sheet-close': closeSheet(); break;
+    case 'sheet-close':
+      if (s?.type === 'tripfile' && s.back) { ui.sheet = s.back; renderSheet(); break; }   // ticket viewer → back to the item
+      closeSheet(); break;
     case 'export': exportData(); break;
     case 'import': importData(); break;
 
@@ -2698,6 +2725,7 @@ document.addEventListener('click', ev => {
       break;
     }
   }
+  if (act.startsWith('tr-') && typeof tripClick === 'function') tripClick(act, el);   // Vacanțe (trips.js)
   if (ui.sheet?.type === 'search' && ['toggle', 'sub', 'undo', 'alarm'].includes(act)) refreshSearch();
   if (act === 'toggle' || act === 'sub' || act === 'alarm' || act === 'dsub-toggle' || act === 'dsub-del' || act === 'c-color' || act === 'c-icon') ev.stopPropagation();
 });
@@ -2705,6 +2733,7 @@ document.addEventListener('click', ev => {
 // bound inputs (data-bind) – text fields update silently, toggles/selects re-render
 document.addEventListener('input', ev => {
   const t = ev.target;
+  if (t.dataset.tb !== undefined && typeof tripBind === 'function') { tripBind(t, false); return; }
   if (t.id === 'quickadd') {
     const box = document.getElementById('qasugg');
     const c = catById(t.dataset.cat);
@@ -2747,6 +2776,7 @@ document.addEventListener('change', ev => {
     toast('Reguli copiate de la ' + TEMPLATES[t.value].label);
     return;
   }
+  if (t.dataset.tb !== undefined && typeof tripBind === 'function') { tripBind(t, true); return; }
   // "Produsele mele": change the aisle of one of your products
   if (t.dataset.mp !== undefined && ui.sheet?.type === 'myprod') {
     const p = myProducts()[t.dataset.mp];
@@ -2797,6 +2827,7 @@ document.addEventListener('focusout', ev => {
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && ev.target.id === 'newsub') { ev.preventDefault(); addDraftSub(); }
   else if (ev.key === 'Enter' && ev.target.id === 'f-title') { ev.preventDefault(); ev.target.blur(); }
+  else if (typeof tripKey === 'function' && tripKey(ev)) { /* handled by Vacanțe */ }
   else if (ev.key === 'Enter' && ev.target.id === 'quickadd') {
     ev.preventDefault();
     const c = catById(ev.target.dataset.cat);
@@ -2979,6 +3010,7 @@ document.addEventListener('click', ev => {
   }
 }, true);
 function confirmSwipeDelete(kind, id) {
+  if (kind === 'trip' && typeof confirmDeleteTrip === 'function') { confirmDeleteTrip(id); return; }
   if (kind === 'cat') {
     const c = catById(id);
     if (!c) return;
