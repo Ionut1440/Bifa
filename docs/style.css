@@ -165,14 +165,16 @@ button.chip { cursor: pointer; }
 .field { display: flex; align-items: center; gap: 10px; padding: 0 14px; min-height: 46px; position: relative; }
 .field + .field::before, .field + .fieldcol::before, .fieldcol + .field::before, .fieldcol + .fieldcol::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; border-top: .5px solid var(--line); }
 .fieldcol { padding: 10px 14px; position: relative; }
-.field label, .field .lbl { flex: 1; }
+.field .lbl { flex: 1; min-width: 0; }
+.field label.sw { flex: 0 0 51px; }
 .field input[type=text], .field input[type=number], .field input[inputmode], .field textarea { flex: 1; border: 0; outline: none; background: transparent; padding: 12px 0; min-width: 0; }
 .field input.right { text-align: right; }
 .field textarea { resize: none; min-height: 46px; line-height: 1.35; }
 .field .titlein { font-weight: 650; font-size: 18px; }
 .field select { border: 0; background: transparent; color: var(--muted); text-align: right; outline: none; direction: rtl; padding: 12px 0; max-width: 62%; }
 .field select option { direction: ltr; }
-.field input[type=date], .field input[type=datetime-local], .field input[type=time] { border: 0; background: var(--card2); border-radius: 8px; padding: 7px 10px; outline: none; color: var(--text); min-height: 34px; }
+.field input[type=date], .field input[type=datetime-local], .field input[type=time] { -webkit-appearance: none; appearance: none; border: 0; background: var(--card2); border-radius: 8px; padding: 7px 10px; outline: none; color: var(--text); min-height: 34px; max-width: 64%; flex: 0 1 auto; font-size: 16px; text-align: right; }
+.field input::-webkit-date-and-time-value { text-align: right; }
 .field .ico { width: 22px; text-align: center; font-size: 17px; }
 .amountin { font-weight: 700; font-size: 17px; }
 
@@ -222,3 +224,8 @@ button.chip { cursor: pointer; }
 #toast { position: fixed; left: 50%; top: calc(var(--safe-t) + 12px); transform: translate(-50%, -150%); background: var(--text); color: var(--bg); padding: 11px 18px; border-radius: 22px; font-weight: 600; font-size: 14px; z-index: 40; transition: transform .3s cubic-bezier(.2,.9,.3,1); max-width: 90vw; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
 #toast.show { transform: translate(-50%, 0); }
 .hidden { display: none !important; }
+
+#undo { position: fixed; left: 12px; right: 12px; bottom: calc(var(--tabh) + var(--safe-b) + 12px); max-width: 520px; margin: 0 auto; display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; border-radius: 14px; background: #2C2C2E; color: #fff; font-size: 15px; font-weight: 600; z-index: 30; box-shadow: 0 8px 24px rgba(0,0,0,.25); transform: translateY(140%); opacity: 0; transition: transform .28s cubic-bezier(.2,.9,.3,1), opacity .2s; pointer-events: none; }
+#undo.show { transform: none; opacity: 1; pointer-events: auto; }
+#undo span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#undo button { color: #FFD24A; font-weight: 800; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,.1); white-space: nowrap; }

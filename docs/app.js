@@ -166,9 +166,15 @@ const deadlineText = e => { const d = deadlineOf(e); return d ? (e.deadlineTime 
 const alarmKey = e => `${e.reminder}|${e.repeat}|${e.title}`;
 const alarmAdded = e => e.hasReminder && e.alarmFor === alarmKey(e);
 
+// Items checked a moment ago stay visible (struck through) for a few seconds, with an "Anulează" bar.
+const recentlyDone = new Map();
+const UNDO_MS = 6000;
+const isRecent = e => recentlyDone.has(e.id);
+const settledDone = e => !!e.done && !isRecent(e);
+
 function sortEntries(list) {
   return [...list].sort((a, b) => {
-    if (a.done !== b.done) return a.done ? 1 : -1;
+    if (settledDone(a) !== settledDone(b)) return settledDone(a) ? 1 : -1;
     const x = sortDate(a), y = sortDate(b);
     if (x && y && +x !== +y) return x - y;
     if (x && !y) return -1;
@@ -182,7 +188,7 @@ function sectionsByDate(list) {
   const tomorrow = addDays(today, 1), after = addDays(today, 2), week = addDays(today, 7);
   const b = { overdue: [], today: [], tomorrow: [], week: [], later: [], nodate: [], done: [] };
   for (const e of sortEntries(list)) {
-    if (e.done) { b.done.push(e); continue; }
+    if (settledDone(e)) { b.done.push(e); continue; }
     if (isOverdue(e) || (reminderMissed(e) && !e.hasDeadline)) { b.overdue.push(e); continue; }
     const d = sortDate(e);
     if (!d) b.nodate.push(e);
@@ -206,6 +212,57 @@ function toggleDone(e) {
   e.done = !e.done;
   e.doneAt = e.done ? Date.now() : null;
   save();
+  if (e.done) showUndo(e, `Bifat: ${e.title}`);
+  else { recentlyDone.delete(e.id); hideUndo(); }
+}
+
+// ---------- undo bar ----------
+let undoTimer = null;
+function showUndo(e, text) {
+  recentlyDone.set(e.id, Date.now());
+  let bar = document.getElementById('undo');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'undo';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `<span>✓ ${esc(text)}</span><button data-act="undo" data-id="${e.id}">Anulează</button>`;
+  bar.classList.add('show');
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => { recentlyDone.clear(); hideUndo(); if (!ui.sheet) render(); }, UNDO_MS);
+}
+function hideUndo() {
+  document.getElementById('undo')?.classList.remove('show');
+}
+function undoDone(id) {
+  const e = entryById(id);
+  if (e && e.done) {
+    e.done = false;
+    e.doneAt = null;
+    // a sub-item that auto-checked the parent: uncheck the last checked sub-item too
+    if (e._autoBy) {
+      const s = (e.subs || []).find(x => x.id === e._autoBy);
+      if (s) s.done = false;
+      delete e._autoBy;
+    }
+    save();
+  }
+  recentlyDone.delete(id);
+  clearTimeout(undoTimer);
+  hideUndo();
+  render();
+  toast('Anulat ↩︎');
+}
+function askThenToggle(e) {
+  if (!e.done && db.settings?.confirmCheck) {
+    const c = catById(e.cat);
+    openActions(`Bifezi „${e.title}” ca ${(c?.doneLabel || 'bifat').toLowerCase()}?`, [
+      { label: '✓ Da, bifează', run: () => { toggleDone(e); render(); } },
+    ]);
+    return;
+  }
+  toggleDone(e);
+  render();
 }
 function toggleSub(e, sid) {
   const s = (e.subs || []).find(x => x.id === sid);
@@ -214,9 +271,14 @@ function toggleSub(e, sid) {
   const c = catById(e.cat);
   if (c?.subsAuto !== false && e.subs.length) {
     const all = e.subs.every(x => x.done);
-    if (all && !e.done) { e.done = true; e.doneAt = Date.now(); toast(`Toate ${(c?.subsLabel || 'elementele').toLowerCase()} bifate ✓`); }
-    else if (!all && e.done) { e.done = false; e.doneAt = null; }
+    if (all && !e.done) {
+      e.done = true; e.doneAt = Date.now(); e._autoBy = sid;
+      save();
+      showUndo(e, `Toate ${(c?.subsLabel || 'elementele').toLowerCase()} bifate: ${e.title}`);
+      return;
+    } else if (!all && e.done) { e.done = false; e.doneAt = null; }
   }
+  delete e._autoBy;
   save();
 }
 function deleteEntry(id) { db.entries = db.entries.filter(e => e.id !== id); save(); }
@@ -252,7 +314,7 @@ function buildIcs(e) {
   const out = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Bifa//RO', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     'BEGIN:VEVENT',
-    `UID:${e.id}-${icsDate(start)}@bifa`,
+    `UID:${e.id}@bifa`,
     `DTSTAMP:${stamp}`,
     `DTSTART:${icsDate(start)}`,
     `DTEND:${icsDate(end)}`,
@@ -393,10 +455,14 @@ function screenToday() {
   const today = startOfDay(new Date());
   const tomorrow = addDays(today, 1), weekEnd = addDays(today, 8);
   const ov = [], td = [], wk = [];
-  for (const e of sortEntries(db.entries.filter(e => !e.done && catById(e.cat)))) {
+  for (const e of sortEntries(db.entries.filter(e => !settledDone(e) && catById(e.cat)))) {
     const d = sortDate(e);
     const r = e.hasReminder ? nextReminder(e) : null;
-    if (isOverdue(e) || reminderMissed(e)) ov.push(e);
+    if (isRecent(e)) {
+      // keep it where it was before being checked
+      const wasOver = d && (e.deadlineTime ? d < new Date() : startOfDay(d) < today);
+      if (wasOver) ov.push(e); else if ((d && d < tomorrow) || (r && sameDay(r, new Date()))) td.push(e); else wk.push(e);
+    } else if (isOverdue(e) || reminderMissed(e)) ov.push(e);
     else if ((d && d < tomorrow) || (r && sameDay(r, new Date()))) td.push(e);
     else if (d && d < weekEnd) wk.push(e);
   }
@@ -444,6 +510,12 @@ function screenLists() {
     <div class="group">${rows || '<div class="empty">Nicio listă.</div>'}</div>
     <div class="group mt"><button class="linkrow" data-act="cat-new">${ICON.plus} Listă nouă</button></div>
     <div class="footnote">Fiecare listă are regulile ei (sumă, termen, produse, remindere…). Apasă pe <span style="display:inline-block;width:16px;vertical-align:-3px">${ICON.gear}</span> ca să le schimbi.</div>
+    <div class="sec-title">Setări</div>
+    <div class="group"><div class="catrow" data-act="set-confirm" style="cursor:pointer">
+      <div style="flex:1"><div class="catname" style="font-weight:500">Cere confirmare la bifare</div>
+      <div class="catsub">Oricum, după ce bifezi ai câteva secunde să apeși „Anulează”.</div></div>
+      <label class="sw" style="pointer-events:none"><input type="checkbox" ${db.settings?.confirmCheck ? 'checked' : ''}><span></span></label>
+    </div></div>
     <div class="sec-title">Backup</div>
     <div class="group">
       <button class="linkrow" data-act="export">${ICON.download} Salvează o copie (backup)</button>
@@ -456,7 +528,7 @@ function categoryVisible(c) {
   const q = ui.search.trim().toLowerCase();
   return db.entries.filter(e => {
     if (e.cat !== c.id) return false;
-    if (ui.filter === 'active' && e.done) return false;
+    if (ui.filter === 'active' && settledDone(e)) return false;
     if (ui.filter === 'done' && !e.done) return false;
     if (!q) return true;
     return [e.title, e.details, e.vendor, e.group, e.tracking, ...(e.subs || []).map(s => s.title)]
@@ -506,7 +578,7 @@ function screenCategory(c) {
 function screenReminders() {
   const list = db.entries.filter(e => e.hasReminder && catById(e.cat));
   const missed = list.filter(reminderMissed).sort((a, b) => parseLocal(b.reminder) - parseLocal(a.reminder));
-  const upcoming = list.filter(e => !e.done && !reminderMissed(e));
+  const upcoming = list.filter(e => (!e.done || isRecent(e)) && !reminderMissed(e));
   const days = {};
   for (const e of upcoming) { const d = startOfDay(nextReminder(e)); (days[+d] ||= []).push(e); }
   const keys = Object.keys(days).map(Number).sort((a, b) => a - b);
@@ -619,7 +691,7 @@ function entrySheetHtml() {
     }
     h += `</div>`;
     if (past) h += `<div class="ffoot orange">Ora aleasă a trecut deja — alege una din viitor.</div>`;
-    else if (on) h += `<div class="ffoot">După salvare, apasă „Salvează și pune alarma” ca să sune la ora asta (prin Calendarul iPhone-ului), chiar dacă aplicația e închisă.</div>`;
+    else if (on) h += `<div class="ffoot">Când apeși „Salvează”, se deschide Calendarul: apasă „Adaugă” și alarma sună la ora asta, chiar dacă aplicația e închisă.</div>`;
     return h;
   };
 
@@ -686,9 +758,8 @@ function entrySheetHtml() {
 
   const remOn = d.hasReminder || c.reminderMode === 'always';
   const canAlarm = remOn && (d.repeat !== 'none' || parseLocal(d.reminder) > new Date());
-  if (canAlarm) parts.push(`<button class="btn block mt" style="background:${col}" data-act="entry-save-alarm">🔔 Salvează și pune alarma</button>`);
 
-  return `<div class="overlay" data-act="sheet-close"></div>
+  return `<div class="overlay"></div>
     <div class="panel" style="--accent:${col}">
       <div class="panel-head"><button data-act="sheet-close">Renunță</button>
         <div class="t">${isNew ? 'Nou în ' + esc(c.name) : 'Editează'}</div>
@@ -741,10 +812,9 @@ function saveEntry(withAlarm) {
   if (c.usesSubs && c.subsAuto && e.subs.length && e.subs.every(x => x.done) && !e.done) { e.done = true; e.doneAt = Date.now(); }
   save();
   closeSheet();
-  if (withAlarm) addAlarm(e);
-  else if (e.hasReminder && !e.done && !alarmAdded(e) && (e.repeat !== 'none' || parseLocal(e.reminder) > new Date())) {
-    toast('Salvat. Apasă „+ Pune alarmă” ca să sune 🔔');
-  } else toast('Salvat ✓');
+  const needsAlarm = e.hasReminder && !e.done && !alarmAdded(e) && (e.repeat !== 'none' || parseLocal(e.reminder) > new Date());
+  if (withAlarm || needsAlarm) addAlarm(e);
+  else toast('Salvat ✓');
 }
 
 // ---------- category editor ----------
@@ -761,7 +831,7 @@ function categorySheetHtml() {
   const tx = (field, label, ph) => `<div class="field"><span class="lbl" style="color:var(--muted);font-size:15px">${label}</span><input type="text" class="right" data-bind="c.${field}" placeholder="${esc(ph)}" value="${esc(d[field])}"></div>`;
   const count = isNew ? 0 : db.entries.filter(e => e.cat === d.id).length;
   const days = +d.autoRemDays === 0 ? 'În ziua termenului' : +d.autoRemDays === 1 ? 'Cu o zi înainte' : `Cu ${d.autoRemDays} zile înainte`;
-  return `<div class="overlay" data-act="sheet-close"></div>
+  return `<div class="overlay"></div>
   <div class="panel" style="--accent:${col}">
     <div class="panel-head"><button data-act="sheet-close">Renunță</button><div class="t">${isNew ? 'Listă nouă' : 'Reguli listă'}</div>
       <button class="save" data-act="cat-save" ${d.name.trim() ? '' : 'disabled'}>Salvează</button></div>
@@ -853,6 +923,7 @@ function actionsHtml() {
 function renderSheet() {
   const el = document.getElementById('sheet');
   if (!ui.sheet) { el.innerHTML = ''; document.body.style.overflow = ''; return; }
+  ui.pendingRerender = false;
   const body = el.querySelector('.panel-body');
   const scroll = body ? body.scrollTop : 0;
   el.innerHTML = ui.sheet.type === 'entry' ? entrySheetHtml() : ui.sheet.type === 'category' ? categorySheetHtml() : actionsHtml();
@@ -862,7 +933,7 @@ function renderSheet() {
   if (body) el.querySelectorAll('.panel, .overlay').forEach(x => (x.style.animation = 'none'));
   document.body.style.overflow = 'hidden';
 }
-function closeSheet() { ui.sheet = null; renderSheet(); render(); }
+function closeSheet() { ui.sheet = null; ui.pendingRerender = false; renderSheet(); render(); }
 
 // ---------- toast ----------
 let toastTimer;
@@ -917,7 +988,9 @@ document.addEventListener('click', ev => {
   switch (act) {
     case 'tab': ui.tab = el.dataset.tab; ui.catId = null; ui.reorder = false; ui.search = ''; render(); window.scrollTo(0, 0); break;
     case 'open': { const e = entryById(id); if (e) openEntry(e.cat, e.id); break; }
-    case 'toggle': { const e = entryById(id); if (e) { toggleDone(e); render(); } break; }
+    case 'toggle': { const e = entryById(id); if (e) askThenToggle(e); break; }
+    case 'undo': undoDone(id); break;
+    case 'set-confirm': db.settings = { ...(db.settings || {}), confirmCheck: !db.settings?.confirmCheck }; save(); render(); break;
     case 'sub': { const e = entryById(id); if (e) { toggleSub(e, el.dataset.sid); render(); } break; }
     case 'alarm': { const e = entryById(id); if (e) addAlarm(e); break; }
     case 'open-cat': ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); window.scrollTo(0, 0); break;
@@ -1024,7 +1097,32 @@ document.addEventListener('change', ev => {
   const b = t.dataset.bind;
   if (!b || !ui.sheet) return;
   if (t.type === 'checkbox') setBound(b, t.checked, true);
-  else if (t.tagName === 'SELECT' || t.type === 'date' || t.type === 'datetime-local' || t.type === 'time') setBound(b, t.value, true);
+  else if (t.tagName === 'SELECT') setBound(b, t.value, true);
+  else if (t.type === 'date' || t.type === 'datetime-local' || t.type === 'time') {
+    // Never re-render while the iPhone date/time picker is open: it would close the picker
+    // (and the next tap would fall through), and the minutes could not be chosen.
+    const before = ui.sheet.type === 'entry' ? ui.sheet.d.hasReminder : null;
+    setBound(b, t.value, false);
+    if (ui.sheet.type === 'entry') {
+      const d = ui.sheet.d;
+      const remInput = document.querySelector('[data-bind="reminder"]');
+      if (remInput && remInput !== t) remInput.value = d.reminder;
+      const remSwitch = document.querySelector('[data-bind="hasReminder"]');
+      if (remSwitch) remSwitch.checked = !!d.hasReminder;
+      if (before !== d.hasReminder) ui.pendingRerender = true;
+    }
+  }
+});
+// once the picker is closed, apply any layout change it caused
+document.addEventListener('focusout', ev => {
+  const t = ev.target;
+  if (!ui.pendingRerender || !['date', 'datetime-local', 'time'].includes(t.type)) return;
+  setTimeout(() => {
+    if (!ui.pendingRerender || !ui.sheet) return;
+    if (['date', 'datetime-local', 'time'].includes(document.activeElement?.type)) return;
+    ui.pendingRerender = false;
+    renderSheet();
+  }, 350);
 });
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && ev.target.id === 'newsub') { ev.preventDefault(); addDraftSub(); }
