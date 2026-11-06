@@ -679,6 +679,13 @@ function rowHtml(e, opts = {}) {
     else if (c?.usesPaid) color = e.paid ? 'var(--muted)' : 'var(--red)';
     amount = `<div class="ramount" style="color:${color}">${sign}${esc(money(e.amount, e.currency))}</div>`;
   }
+  // shopping: quantity with − / + right on the row
+  if (isShopCat(c)) {
+    amount = e.done
+      ? (e.qty ? `<div class="qtydone">${esc(qtyText(e))}</div>` : '')
+      : `<div class="qtyctl"><button data-act="qty-minus" data-id="${e.id}" aria-label="Mai puțin">−</button>
+          <span>${esc(qtyText(e))}</span><button data-act="qty-plus" data-id="${e.id}" aria-label="Mai mult">+</button></div>`;
+  }
   const prio = c?.usesPriority && e.priority && !e.done ? `<span class="prio" style="color:${e.priority === 2 ? 'var(--red)' : 'var(--orange)'}">${e.priority === 2 ? '!!' : '!'}</span>` : '';
   const catmark = opts.showCat && c ? `<span class="catdot">${c.icon}</span>` : '';
   const subsHtml = subs.length && !e.done ? `<div class="subs">${subs.slice(0, 8).map(s => `
@@ -1139,6 +1146,7 @@ function newDraft(c) {
     vendor: '', tracking: '', priority: 0,
     hasReminder: c.reminderMode === 'always', reminder: toLocal(nextHour), repeat: 'none',
     repInterval: 2, repEnd: 'never', repCount: 5, repUntil: dkey(addDays(new Date(), 7)), repDates: [], calMonth: dkey(new Date()).slice(0, 7),
+    qtyText: '', unit: 'buc',
     subs: [], remTouched: false,
   };
 }
@@ -1149,6 +1157,7 @@ function draftFrom(e) {
     repInterval: e.repInterval || 2, repEnd: e.repEnd || 'never', repCount: e.repCount || 5,
     repUntil: e.repUntil || dkey(addDays(new Date(), 7)), repDates: [...(e.repDates || [])],
     calMonth: (firstPicked || dkey(new Date())).slice(0, 7),
+    qtyText: e.qty ? fNum.format(e.qty) : '', unit: e.unit || 'buc',
   };
 }
 function openEntry(catId, entryId) {
@@ -1289,6 +1298,12 @@ function entrySheetHtml() {
     parts.push(h + `</div>`);
   }
 
+  if (isShopCat(c)) {
+    // shopping: how much / how many
+    parts.push(`<div class="fhead">Cantitate</div><div class="form">
+      <div class="field"><input type="text" inputmode="decimal" class="amountin" data-bind="qtyText" placeholder="ex: 2" value="${esc(d.qtyText || '')}">
+        <select data-bind="unit" style="max-width:110px">${UNITS.map(u => `<option ${u === (d.unit || 'buc') ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>`);
+  }
   if (c.usesPriority || c.usesGroups) {
     let h = `<div class="form" style="margin-top:18px">`;
     if (c.usesPriority) h += `<div class="field"><span class="ico">🚩</span><span class="lbl">Prioritate</span><select data-bind="priority">${PRIORITIES.map((p, i) => `<option value="${i}" ${+d.priority === i ? 'selected' : ''}>${p}</option>`).join('')}</select></div>`;
@@ -1375,6 +1390,7 @@ function saveEntry(withAlarm) {
     repInterval: Math.max(1, +d.repInterval || 1), repEnd: d.repEnd || 'never', repCount: Math.max(1, +d.repCount || 1),
     repUntil: d.repUntil, repDates: [...new Set(d.repDates || [])].sort(),
     subs: d.subs.filter(x => x.title.trim()).map(x => ({ id: x.id, title: x.title.trim(), done: !!x.done })),
+    ...(isShopCat(c) ? { qty: parseAmount(d.qtyText) || 0, unit: parseAmount(d.qtyText) ? (d.unit || 'buc') : '' } : {}),
     alarmFor: d.alarmFor || e.alarmFor || null,
   });
   if (c.usesSubs && c.subsAuto && e.subs.length && e.subs.every(x => x.done) && !e.done) { e.done = true; e.doneAt = Date.now(); }
@@ -1721,18 +1737,44 @@ function shopSuggestions(c, q) {
   out.sort((a, b) => b.s - a.s);
   return out.slice(0, 6);
 }
+// ---------- quantities: "2 kg mere", "mere 1,5 kg", "lapte x3", "6 ouă" ----------
+const UNITS = ['buc', 'kg', 'g', 'l', 'ml', 'pachet', 'cutie', 'sticlă', 'doză'];
+const UNIT_ALIASES = { x: 'buc', buc: 'buc', bucata: 'buc', bucati: 'buc', bucăți: 'buc', bucată: 'buc', kg: 'kg', kile: 'kg', kilograme: 'kg', g: 'g', gr: 'g', grame: 'g',
+  l: 'l', litru: 'l', litri: 'l', ml: 'ml', pachet: 'pachet', pachete: 'pachet', pac: 'pachet', cutie: 'cutie', cutii: 'cutie', sticla: 'sticlă', sticlă: 'sticlă', sticle: 'sticlă',
+  doza: 'doză', doză: 'doză', doze: 'doză' };
+const UNIT_RX = '(x|buc(?:ata|ati|ăți|ată)?|kg|kile|kilograme|grame|gr|g|litri|litru|l|ml|pachete|pachet|pac|cutii|cutie|sticle|sticla|sticlă|doze|doza|doză)';
+function parseQty(text) {
+  const t = String(text || '').trim().replace(/\s+/g, ' ');
+  const num = s => parseFloat(String(s).replace(',', '.'));
+  let m = t.match(new RegExp(`^(\\d+(?:[.,]\\d+)?)\\s*${UNIT_RX}?\\.?\\s+(.+)$`, 'i'));          // "2 kg mere", "6 ouă"
+  if (m && num(m[1]) > 0) return { name: m[3].trim(), qty: num(m[1]), unit: UNIT_ALIASES[(m[2] || 'buc').toLowerCase()] || 'buc' };
+  m = t.match(new RegExp(`^(.+?)\\s+(\\d+(?:[.,]\\d+)?)\\s*${UNIT_RX}?\\.?$`, 'i'));               // "mere 1,5 kg", "ouă 10"
+  if (m && num(m[2]) > 0 && !/\d$/.test(m[1])) return { name: m[1].trim(), qty: num(m[2]), unit: UNIT_ALIASES[(m[3] || 'buc').toLowerCase()] || 'buc' };
+  m = t.match(/^(.+?)\s*[x×]\s*(\d+)$/i);                                                          // "lapte x3"
+  if (m) return { name: m[1].trim(), qty: +m[2], unit: 'buc' };
+  return { name: t, qty: 0, unit: '' };
+}
+const qtyStep = unit => (unit === 'kg' || unit === 'l') ? 0.5 : (unit === 'g' || unit === 'ml') ? 100 : 1;
+const qtyText = e => {
+  const q = +e.qty || 1, u = e.unit || 'buc';
+  return `${fNum.format(q)}${u === 'buc' ? '' : ' ' + u}`;
+};
+
 function shopSuggestHtml(c, q) {
-  const raw = q.trim();
-  if (!raw) return '';
+  const full = q.trim();
+  if (!full) return '';
+  const pq = parseQty(full);
+  const raw = pq.name;                       // match on the product, keep the quantity you typed
+  const qtyPart = pq.qty ? ` · ${fNum.format(pq.qty)}${pq.unit === 'buc' ? ' buc' : ' ' + pq.unit}` : '';
   const list = shopSuggestions(c, raw);
   const typed = raw.charAt(0).toUpperCase() + raw.slice(1);
   const exact = list.some(x => norm(x.name) === norm(raw));
   const rows = list.map(x => `<button data-act="qa-pick" data-id="${c.id}" data-v="${esc(x.name)}" data-g="${esc(x.aisle)}">
-      <span class="qs-ico">${aisleIcon(x.aisle)}</span><span class="qs-name">${esc(x.name)}</span><span class="qs-aisle">${esc(x.aisle)}</span></button>`);
+      <span class="qs-ico">${aisleIcon(x.aisle)}</span><span class="qs-name">${esc(x.name)}${esc(qtyPart)}</span><span class="qs-aisle">${esc(x.aisle)}</span></button>`);
   if (!exact && !raw.includes(',')) {
     const g = shopGuess(raw);
     rows.push(`<button data-act="qa-pick" data-id="${c.id}" data-v="${esc(typed)}" data-g="${esc(g)}">
-      <span class="qs-ico">＋</span><span class="qs-name">Adaugă „${esc(typed)}”</span><span class="qs-aisle">${aisleIcon(g)} ${esc(g)}</span></button>`);
+      <span class="qs-ico">＋</span><span class="qs-name">Adaugă „${esc(typed)}”${esc(qtyPart)}</span><span class="qs-aisle">${aisleIcon(g)} ${esc(g)}</span></button>`);
     // a new product of yours: choose its aisle once, it's remembered
     rows.push(`<button data-act="qa-pickaisle" data-id="${c.id}" data-v="${esc(typed)}">
       <span class="qs-ico">🏷️</span><span class="qs-name">Produs nou „${esc(typed)}” · alege raionul</span><span class="qs-aisle">›</span></button>`);
@@ -1740,26 +1782,39 @@ function shopSuggestHtml(c, q) {
   return rows.join('');
 }
 
-function shopAdd(c, text, forcedGroup) {
-  const names = String(text || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
-  let added = 0, dup = 0;
+// add one or more products ("lapte, 2 kg mere, ouă x10"); a product already on the list gets more quantity
+function shopAdd(c, text, forcedGroup, qtyFrom) {
+  const names = String(text || '').replace(/(\d),(\d)/g, '$1.$2').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+  const extra = qtyFrom ? parseQty(qtyFrom) : null;   // quantity typed in the box when you tap a suggestion
+  let added = 0, merged = 0;
   for (const raw of names) {
-    const title = raw.charAt(0).toUpperCase() + raw.slice(1);
-    if (db.entries.some(e => e.cat === c.id && !e.done && norm(e.title) === norm(title))) { dup++; continue; }
+    const pq = parseQty(raw);
+    const qty = pq.qty || extra?.qty || 0, unit = pq.qty ? pq.unit : (extra?.qty ? extra.unit : '');
+    const title = pq.name.charAt(0).toUpperCase() + pq.name.slice(1);
+    const same = db.entries.find(e => e.cat === c.id && !e.done && norm(e.title) === norm(title));
+    if (same) {
+      // already on the list: add to its quantity
+      const u = same.unit || unit || 'buc';
+      if (!unit || unit === u) { same.qty = (+same.qty || 1) + (qty || 1); same.unit = u; }
+      else { same.qty = qty; same.unit = unit; }
+      merged++;
+      toast(`${same.title} → ${qtyText(same)}`);
+      continue;
+    }
     const now = new Date();
     db.entries.push({
       id: uid(), createdAt: Date.now(), cat: c.id, title, details: '', group: (names.length === 1 && forcedGroup) || shopGuess(title), done: false, doneAt: null,
       hasDeadline: false, deadline: toLocal(now), deadlineTime: false, hasAmount: false, amount: 0, currency: c.currency || 'RON',
       paid: false, dir: 'out', vendor: '', tracking: '', priority: 0, hasReminder: false, reminder: toLocal(now), repeat: 'none', subs: [],
+      qty: qty || 0, unit: qty ? unit : '',
     });
     const h = (c.history ||= {});
     const k = norm(title);
     h[k] = { name: title, n: (h[k]?.n || 0) + 1, last: Date.now() };
     added++;
   }
-  if (added || dup) save();
-  if (dup && !added) toast('E deja pe listă');
-  return added;
+  if (added || merged) save();
+  return added + merged;
 }
 function screenShopping(c) {
   const col = colorOf(c);
@@ -2569,9 +2624,22 @@ document.addEventListener('click', ev => {
       if (c && inp && shopAdd(c, inp.value)) { render(); document.getElementById('quickadd')?.focus(); }
       break;
     }
+    case 'qty-minus': case 'qty-plus': {
+      // − / + on a shopping row
+      const e = entryById(id);
+      if (!e) break;
+      const step = qtyStep(e.unit || 'buc');
+      const cur = +e.qty || 1;
+      const next = Math.round((act === 'qty-plus' ? cur + step : cur - step) * 100) / 100;
+      if (next <= 0) { toast('Glisează spre dreapta ca să-l ștergi'); break; }
+      e.qty = next; e.unit = e.unit || 'buc';
+      try { navigator.vibrate?.(6); } catch (err) { /* ignore */ }
+      save(); render();
+      break;
+    }
     case 'qa-pick': {
       const c = catById(id);
-      if (c && shopAdd(c, el.dataset.v, el.dataset.g)) {
+      if (c && shopAdd(c, el.dataset.v, el.dataset.g, document.getElementById('quickadd')?.value)) {
         render();
         toast(`${el.dataset.v} → ${el.dataset.g}`);
         document.getElementById('quickadd')?.focus();
