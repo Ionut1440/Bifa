@@ -78,6 +78,9 @@ const TEMPLATES = {
   note: { label: 'Notițe', icon: '📝', color: 3 },
   reminder: { label: 'Remindere', icon: '🔔', color: 4 },
   meds: { label: 'Medicamente', icon: '💊', color: 6 },
+  shopping: { label: 'Cumpărături', icon: '🛒', color: 2 },
+  leave: { label: 'Zile de concediu', icon: '🏖️', color: 6 },
+  office: { label: 'Zile la birou', icon: '🏢', color: 0 },
   blank: { label: 'Listă simplă', icon: '📁', color: 5 },
 };
 
@@ -103,6 +106,10 @@ function templateRules(t) {
   if (t === 'note') set({ usesGroups: true, groupMode: 'group', placeholder: 'Titlu notiță' });
   if (t === 'reminder') set({ usesDeadline: false, reminderMode: 'always', doneLabel: 'Gata', placeholder: 'Ce să-ți amintesc?' });
   if (t === 'blank') set({ usesDeadline: false, groupMode: 'none' });
+  // "app" lists open a full mini-app (the Concediu / Calendar Birou apps) inside MindMe
+  if (t === 'leave') set({ kind: 'app', appUrl: 'concediu/', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false });
+  if (t === 'office') set({ kind: 'app', appUrl: 'birou/', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false });
+  if (t === 'shopping') set({ kind: 'shopping', usesDeadline: false, reminderMode: 'off', usesGroups: true, groupMode: 'group', summary: false, placeholder: 'Ce cumperi?', doneLabel: 'În coș' });
   if (t === 'meds') set({ kind: 'meds', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false, placeholder: 'Numele medicamentului', doneLabel: 'Oprit' });
   return r;
 }
@@ -116,13 +123,94 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw);
-      if (d && Array.isArray(d.categories) && Array.isArray(d.entries)) return addMedsListOnce(d);
+      if (d && Array.isArray(d.categories) && Array.isArray(d.entries)) return addAppListsOnce(addShoppingListOnce(addMedsListOnce(d)));
     }
   } catch (e) { /* ignore */ }
-  const d = { v: 1, categories: [], entries: [], medsAdded: true };
-  ['task', 'order', 'payment', 'note', 'reminder', 'meds'].forEach((t, i) => {
+  const d = { v: 1, categories: [], entries: [], medsAdded: true, shopAdded: true, appsAdded: true };
+  ['task', 'shopping', 'order', 'payment', 'note', 'reminder', 'meds', 'leave', 'office'].forEach((t, i) => {
     d.categories.push({ id: uid(), name: TEMPLATES[t].label, icon: TEMPLATES[t].icon, color: TEMPLATES[t].color, order: i, ...templateRules(t) });
   });
+  return d;
+}
+// (function declarations, because they already run while the data loads)
+function normText(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
+
+// store aisles, in the order you walk through a shop; keywords without diacritics
+function aisles() {
+  return [
+    ['Fructe și legume', '🥦', 'mere mar banane banana portocal lamai lamaie lime mandarin grepfrut struguri capsuni afine zmeura pere para kiwi ananas pepene piersic nectarin caise cirese visine prune avocado mango rodie rosii rosie cherry castrav ardei ceapa usturoi cartof morcov varza salata spanac broccoli brocoli conopid dovlec vinete ciuperci patrunjel marar leustean telina ridichi sfecla ghimbir rucola verdeata fructe legume lamaita praz'],
+    ['Brutărie', '🥖', 'paine franzel bagheta chifl covrigi proaspeti corn croissant lipie toast pandispan cozonac blat chec placinta merdenea foietaj'],
+    ['Lactate și ouă', '🥛', 'lapte iaurt branza telemea cascaval smantana unt oua ou kefir sana frisca mozzarella parmezan mascarpone ricotta cottage urda lactate budinca branzica margarina'],
+    ['Carne și pește', '🥩', 'carne pui piept pulpe pulpa porc vita vitel curcan miel tocat tocata ceafa cotlet antricot muschi peste somon crap pastrav dorada creveti file aripi ficat mici'],
+    ['Mezeluri', '🥓', 'salam sunca parizer crenvurst carnati bacon kaiser pastrama prosciutto pate mezel'],
+    ['Congelate', '🧊', 'congelat congelate inghetata cuburi gheata'],
+    ['Băcănie', '🍝', 'paste spaghete penne macaroane taitei orez faina zahar sare piper ulei otet conserv ton fasole mazare porumb linte naut malai gris fulgi cereale musli ketchup mustar maioneza sos bulion pasta de tomate condiment boia oregano cimbru drojdie praf de copt miere gem dulceata unt de arahide nutella supa foi quinoa masline cornflakes'],
+    ['Dulciuri și snacks', '🍫', 'ciocolat biscuit napolitan chips bomboan prajitur tort alune arahide nuci migdale caju seminte popcorn covrigei snacks baton guma jeleuri dulciuri'],
+    ['Băuturi', '🥤', 'apa suc sucuri cola pepsi fanta sprite bere vin sampanie prosecco whisky vodka tuica gin rom lichior limonada energizant red bull nectar sirop tonic'],
+    ['Cafea și ceai', '☕', 'cafea ceai capsule espresso nescafe cacao'],
+    ['Curățenie', '🧽', 'detergent balsam de rufe clor domestos vanish burete bureti lavete saci menajer saci de gunoi solutie geamuri vase pastile vase tablete vase hartie de bucatarie prosoape de hartie servetele folie odorizant mop manusi'],
+    ['Igienă și cosmetice', '🧴', 'sapun sampon balsam de par gel de dus pasta de dinti periuta deodorant hartie igienica crema lame aparat de ras spuma de ras tampoane absorbante dischete betisoare ata dentara apa de gura parfum lotiune servetele umede'],
+    ['Bebeluși', '👶', 'scutece lapte praf piure biberon'],
+    ['Animale', '🐾', 'hrana caine hrana pisica hrana pisici mancare caine mancare pisica nisip pisici'],
+    ['Farmacie', '💊', 'paracetamol nurofen ibuprofen algocalmin vitamine plasturi sirop de tuse'],
+    ['Altele', '🧺', ''],
+  ];
+}
+// keyword → aisle, longest keywords first so "lapte praf" beats "lapte" and "apa de gura" beats "apa"
+function aisleKeywords() {
+  const out = [];
+  for (const [name, , words] of aisles()) {
+    // multi-word keywords are written with their words joined by single spaces in the list above;
+    // known multi-word phrases are matched first
+    const phrases = ['balsam de rufe', 'saci menajer', 'saci de gunoi', 'pastile vase', 'tablete vase', 'hartie de bucatarie', 'prosoape de hartie',
+      'balsam de par', 'gel de dus', 'pasta de dinti', 'hartie igienica', 'aparat de ras', 'spuma de ras', 'ata dentara', 'apa de gura', 'servetele umede',
+      'lapte praf', 'hrana caine', 'hrana pisica', 'hrana pisici', 'mancare caine', 'mancare pisica', 'nisip pisici', 'sirop de tuse',
+      'unt de arahide', 'praf de copt', 'pasta de tomate', 'red bull', 'covrigi proaspeti'];
+    let rest = ' ' + words + ' ';
+    for (const p of phrases) if (rest.includes(' ' + p + ' ')) { out.push([p, name]); rest = rest.replace(' ' + p + ' ', ' '); }
+    rest.split(' ').filter(Boolean).forEach(w => out.push([w, name]));
+  }
+  return out.sort((a, b) => b[0].length - a[0].length);
+}
+var AISLE_KW;   // var: it is used while the data loads, before this line runs
+function guessAisle(title) {
+  if (!AISLE_KW) AISLE_KW = aisleKeywords();
+  const n = ' ' + normText(title).replace(/[^a-z0-9 ]+/g, ' ') + ' ';
+  for (const [kw, name] of AISLE_KW) if (n.includes(' ' + kw)) return name;
+  return 'Altele';
+}
+function aisleIcon(name) { const a = aisles().find(x => x[0] === name); return a ? a[1] : '🧺'; }
+
+// existing users get the "Cumpărături" list once: a list already called "Cumpărături" is upgraded
+// (its items are kept and sorted into aisles), otherwise a new one is added right after the first list
+function addShoppingListOnce(d) {
+  if (d.shopAdded) return d;
+  if (!d.categories.some(c => c.kind === 'shopping')) {
+    const same = d.categories.find(c => normText(c.name) === 'cumparaturi');
+    if (same) {
+      const keep = { id: same.id, name: same.name, icon: same.icon, color: same.color, order: same.order };
+      Object.assign(same, templateRules('shopping'), keep);
+      d.entries.filter(e => e.cat === same.id && !e.group).forEach(e => { e.group = guessAisle(e.title); });
+    } else {
+      d.categories.forEach(c => { if ((c.order || 0) >= 1) c.order = (c.order || 0) + 1; });
+      d.categories.push({ id: uid(), name: TEMPLATES.shopping.label, icon: TEMPLATES.shopping.icon, color: TEMPLATES.shopping.color, order: 1, ...templateRules('shopping') });
+    }
+  }
+  d.shopAdded = true;
+  try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* ignore */ }
+  return d;
+}
+// existing users get "Zile de concediu" + "Zile la birou" once, at the end of the lists
+function addAppListsOnce(d) {
+  if (d.appsAdded) return d;
+  let order = Math.max(-1, ...d.categories.map(c => c.order || 0)) + 1;
+  for (const t of ['leave', 'office']) {
+    const url = templateRules(t).appUrl;
+    if (d.categories.some(c => c.kind === 'app' && c.appUrl === url)) continue;
+    d.categories.push({ id: uid(), name: TEMPLATES[t].label, icon: TEMPLATES[t].icon, color: TEMPLATES[t].color, order: order++, ...templateRules(t) });
+  }
+  d.appsAdded = true;
+  try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* ignore */ }
   return d;
 }
 // existing users get the new "Medicamente" list once (if they delete it, it doesn't come back)
@@ -593,6 +681,7 @@ function screenLists() {
     let sub = active.length ? `${active.length} ${active.length === 1 ? 'activ' : 'active'}` : 'Totul e bifat ✓';
     if (today) sub += ` · ${today} azi`;
     if (over) sub += ` · ${over} întârziat${over === 1 ? '' : 'e'}`;
+    if (c.kind === 'app') sub = c.appUrl === 'birou/' ? 'Zile de birou pe lună, după reguli' : 'Sold, calendar și idei de punți';
     if (isMedCat(c)) {
       const running = items.filter(e => e.med && medStatus(e).state === 'active').length;
       const doses = dosesOn(new Date()).filter(x => x.e.cat === c.id);
@@ -667,6 +756,8 @@ function categoryListHtml(c) {
 }
 function screenCategory(c) {
   if (isMedCat(c)) return screenMeds(c);
+  if (isShopCat(c)) return screenShopping(c);
+  if (c.kind === 'app') return screenApp(c);
   const all = db.entries.filter(e => e.cat === c.id);
   const active = all.filter(e => !e.done);
   const col = colorOf(c);
@@ -713,6 +804,13 @@ const sortByRem = l => [...l].sort((a, b) => nextReminder(a) - nextReminder(b));
 
 function render() {
   const app = document.getElementById('app');
+  // a mini-app is open: never rebuild it (it would reload and lose what you were doing)
+  const cur = ui.tab === 'lists' && ui.catId ? catById(ui.catId) : null;
+  document.body.classList.toggle('inapp', cur?.kind === 'app');
+  if (cur?.kind === 'app') {
+    const fr = document.getElementById('appframe');
+    if (fr && fr.dataset.cat === cur.id) { renderTabbar(); return; }
+  }
   const y = window.scrollY;
   let html;
   if (ui.tab === 'lists' && ui.catId && catById(ui.catId)) html = screenCategory(catById(ui.catId));
@@ -886,10 +984,23 @@ document.addEventListener('pointerdown', ev => {
   bar.classList.remove('compact');
   placePill(tabDrag.over, ev.clientX);
   markOver(tabDrag.over);
+  magnify([...bar.querySelectorAll('button[data-tab]')], ev.clientX, 1.28, 1.25);
 });
 function markOver(btn) {
   document.querySelectorAll('#tabbar button[data-tab]').forEach(b => b.classList.toggle('over', b === btn));
 }
+// "magnifier" while your finger slides along a row of buttons: the one under the finger grows,
+// its neighbours a little less, the rest stay normal — changing smoothly with the distance
+function magnify(buttons, x, maxScale, reach) {
+  buttons.forEach(b => {
+    const r = b.getBoundingClientRect();
+    const dist = Math.abs(x - (r.left + r.width / 2));
+    const k = Math.max(0, 1 - dist / (r.width * reach));
+    const s = 1 + (maxScale - 1) * k * k * (3 - 2 * k);   // smooth curve
+    b.style.transform = s > 1.001 ? `scale(${s.toFixed(3)}) translateY(${(-(s - 1) * 14).toFixed(1)}px)` : '';
+  });
+}
+function unmagnify(buttons) { buttons.forEach(b => { b.style.transform = ''; }); }
 document.addEventListener('pointermove', ev => {
   if (!tabDrag || ev.pointerId !== tabDrag.id) return;
   if (Math.abs(ev.clientX - tabDrag.startX) > 6) tabDrag.moved = true;
@@ -897,6 +1008,7 @@ document.addEventListener('pointermove', ev => {
   if (over !== tabDrag.over) { tabDrag.over = over; try { navigator.vibrate?.(6); } catch (e) { /* ignore */ } }
   markOver(over);
   placePill(over, ev.clientX);
+  magnify([...document.querySelectorAll('#tabbar button[data-tab]')], ev.clientX, 1.28, 1.25);
 });
 function endTabDrag(ev) {
   if (!tabDrag || (ev && ev.pointerId !== tabDrag.id)) return;
@@ -905,6 +1017,7 @@ function endTabDrag(ev) {
   const bar = document.getElementById('tabbar');
   bar.classList.remove('dragging', 'pressing');
   markOver(null);
+  unmagnify([...bar.querySelectorAll('button[data-tab]')]);
   if (ev && ev.type === 'pointercancel') { renderTabbar(); return; }
   if (target) { placePill(target); switchTab(target.dataset.tab); }
 }
@@ -984,7 +1097,9 @@ function entrySheetHtml() {
   const { d, isNew } = ui.sheet;
   const c = catById(d.cat);
   const col = colorOf(c);
-  const groups = [...new Set(db.entries.filter(e => e.cat === c.id && e.group).map(e => e.group))].sort((a, b) => a.localeCompare(b, 'ro'));
+  const groups = isShopCat(c)
+    ? aisles().map(a => a[0])                       // shopping: pick the aisle
+    : [...new Set(db.entries.filter(e => e.cat === c.id && e.group).map(e => e.group))].sort((a, b) => a.localeCompare(b, 'ro'));
   const parts = [];
 
   parts.push(`<div class="form">
@@ -1085,7 +1200,7 @@ function entrySheetHtml() {
     let h = `<div class="form" style="margin-top:18px">`;
     if (c.usesPriority) h += `<div class="field"><span class="ico">🚩</span><span class="lbl">Prioritate</span><select data-bind="priority">${PRIORITIES.map((p, i) => `<option value="${i}" ${+d.priority === i ? 'selected' : ''}>${p}</option>`).join('')}</select></div>`;
     if (c.usesGroups) {
-      h += `<div class="field"><span class="ico">📁</span><input type="text" data-bind="group" list="grouplist" placeholder="Grup (ex: Casă, Muncă)" value="${esc(d.group)}">
+      h += `<div class="field"><span class="ico">📁</span><input type="text" data-bind="group" list="grouplist" placeholder="${isShopCat(c) ? 'Raion' : 'Grup (ex: Casă, Muncă)'}" value="${esc(d.group)}">
         <datalist id="grouplist">${groups.map(g => `<option value="${esc(g)}">`).join('')}</datalist></div>`;
       if (groups.length) h += `<div class="quick" style="--pink:var(--purple)">${groups.map(g => `<button data-act="pickgroup" data-v="${esc(g)}">${esc(g)}</button>`).join('')}</div>`;
     }
@@ -1149,7 +1264,7 @@ function saveEntry(withAlarm) {
     cat: c.id,
     title: d.title.trim(),
     details: d.details.trim(),
-    group: c.usesGroups ? d.group.trim() : (e.group || ''),
+    group: c.usesGroups ? (d.group.trim() || (isShopCat(c) ? guessAisle(d.title) : '')) : (e.group || ''),
     done: d.done,
     hasDeadline: c.usesDeadline && d.hasDeadline,
     deadline: d.deadline,
@@ -1204,8 +1319,10 @@ function categorySheetHtml() {
 
       <div class="form" style="margin-top:14px"><div class="field"><span class="ico">🪄</span><span class="lbl">Copiază regulile de la</span>
         <select data-act-change="c-template"><option value="">alege…</option>${Object.entries(TEMPLATES).map(([k, t]) => `<option value="${k}">${t.icon} ${t.label}</option>`).join('')}</select></div></div>
-      <div class="ffoot">${d.kind === 'meds' ? 'Asta e o listă de medicamente: are câmpurile ei (doză, ore, zile, durata tratamentului).' : 'Ex: alege „Comenzi” ca să ai sumă, plătit/neplătit, AWB și produse; „Medicamente” pentru tratamente.'}</div>
-      ${d.kind === 'meds' ? '' : `
+      <div class="ffoot">${d.kind === 'meds' ? 'Asta e o listă de medicamente: are câmpurile ei (doză, ore, zile, durata tratamentului).'
+        : d.kind === 'app' ? 'Asta e o aplicație din MindMe (concediu / zile la birou): are setările ei, în interior.'
+        : 'Ex: alege „Comenzi” ca să ai sumă, plătit/neplătit, AWB și produse; „Medicamente” pentru tratamente.'}</div>
+      ${d.kind === 'meds' || d.kind === 'app' ? '' : `
 
       <div class="fhead">Ce câmpuri au elementele</div>
       <div class="form">
@@ -1426,6 +1543,74 @@ function refreshSearch() {
   if (box && ui.sheet?.type === 'search') box.innerHTML = searchResultsHtml(ui.sheet.q);
 }
 
+// ---------- mini-apps inside MindMe (Zile de concediu, Zile la birou) ----------
+function screenApp(c) {
+  return `<div class="appview">
+    <div class="appbar"><button class="back" data-act="back">${ICON.back}Liste</button>
+      <div class="apptitle">${c.icon} ${esc(c.name)}</div><span class="appbar-sp"></span></div>
+    <iframe id="appframe" data-cat="${c.id}" src="${esc(c.appUrl)}" title="${esc(c.name)}"></iframe>
+  </div>`;
+}
+
+// ---------- shopping list ----------
+const isShopCat = c => c?.kind === 'shopping';
+function shopAdd(c, text) {
+  const names = String(text || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+  let added = 0, dup = 0;
+  for (const raw of names) {
+    const title = raw.charAt(0).toUpperCase() + raw.slice(1);
+    if (db.entries.some(e => e.cat === c.id && !e.done && norm(e.title) === norm(title))) { dup++; continue; }
+    const now = new Date();
+    db.entries.push({
+      id: uid(), createdAt: Date.now(), cat: c.id, title, details: '', group: guessAisle(title), done: false, doneAt: null,
+      hasDeadline: false, deadline: toLocal(now), deadlineTime: false, hasAmount: false, amount: 0, currency: c.currency || 'RON',
+      paid: false, dir: 'out', vendor: '', tracking: '', priority: 0, hasReminder: false, reminder: toLocal(now), repeat: 'none', subs: [],
+    });
+    const h = (c.history ||= {});
+    const k = norm(title);
+    h[k] = { name: title, n: (h[k]?.n || 0) + 1, last: Date.now() };
+    added++;
+  }
+  if (added || dup) save();
+  if (dup && !added) toast('E deja pe listă');
+  return added;
+}
+function screenShopping(c) {
+  const col = colorOf(c);
+  const items = db.entries.filter(e => e.cat === c.id);
+  const active = items.filter(e => !settledDone(e));
+  const cart = items.filter(settledDone);
+  const order = aisles().map(a => a[0]);
+  const by = {};
+  active.forEach(e => { (by[e.group || 'Altele'] ||= []).push(e); });
+  const groups = [...order.filter(g => by[g]), ...Object.keys(by).filter(g => !order.includes(g)).sort((a, b) => a.localeCompare(b, 'ro'))];
+  const activeNames = new Set(active.map(e => norm(e.title)));
+  const freq = Object.values(c.history || {}).filter(h => !activeNames.has(norm(h.name)))
+    .sort((a, b) => b.n - a.n || b.last - a.last).slice(0, 14);
+  const total = active.length + cart.length;
+  return `
+    <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
+      <div class="right"><button class="iconbtn" data-act="cat-menu" data-id="${c.id}">${ICON.more}</button></div></div>
+    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    <div class="quickadd" style="--c:${col}">
+      <span class="qa-plus">${ICON.plus}</span>
+      <input id="quickadd" type="text" placeholder="Adaugă produs (ex: lapte, pâine, ouă)" autocomplete="off" autocorrect="off" enterkeyhint="done" data-cat="${c.id}">
+      <button class="qa-btn" data-act="qa-add" data-id="${c.id}">Adaugă</button>
+    </div>
+    ${freq.length ? `<div class="sl-title" style="margin:14px 4px 8px">Cumpărate des · atinge ca să adaugi</div>
+      <div class="quick qa-freq" style="--pink:${col};padding:0 0 4px">${freq.map(h => `<button data-act="qa-again" data-id="${c.id}" data-v="${esc(h.name)}">＋ ${esc(h.name)}</button>`).join('')}</div>` : ''}
+    ${total ? `<div class="medtoday" style="--c:${col};margin-top:14px">
+        <div><div class="mt-l">În coș</div><div class="mt-v">${cart.length} din ${total}</div></div>
+        <div class="mt-bar"><span style="width:${Math.round(cart.length / total * 100)}%"></span></div></div>` : ''}
+    ${!total ? `<div class="empty"><div class="big">🛒</div><b>Lista e goală</b>Scrie ce ai de luat mai sus și apasă Enter. Produsele se așază singure pe raioane.</div>` : ''}
+    ${!active.length && cart.length ? `<div class="banner" style="margin-top:12px"><b>Gata, ai luat tot! 🎉</b>Golește coșul când ajungi acasă.</div>` : ''}
+    ${groups.map(g => `<div class="sec-title">${aisleIcon(g)} ${esc(g)} · ${by[g].length}</div>
+      <div class="group">${by[g].map(e => rowHtml(e, { showGroup: false })).join('')}</div>`).join('')}
+    ${cart.length ? `<div class="sl-head" style="margin-top:26px"><span>🛒 În coș · ${cart.length}</span><button data-act="cart-clear" data-id="${c.id}">Golește coșul</button></div>
+      <div class="group">${cart.map(e => rowHtml(e, { showGroup: false })).join('')}</div>` : ''}
+    ${total ? `<div class="footnote">Bifează ce pui în coș. Glisează spre dreapta ca să ștergi un produs; apasă pe el ca să schimbi raionul sau să adaugi detalii.</div>` : ''}`;
+}
+
 // ---------- month calendar to pick several days (reminder "Zile alese din calendar") ----------
 function calPickerHtml(d) {
   const [y, m] = (d.calMonth || dkey(new Date()).slice(0, 7)).split('-').map(Number);
@@ -1610,7 +1795,7 @@ function openMed(catId, entryId) {
       id: e?.id || null, cat: catId, title: e?.title || '', details: e?.details || '', done: !!e?.done,
       dose: m.dose || '', times: [...(m.times || ['08:00'])],
       start: m.start || dkey(today), durType: m.durType || 'days', days: m.days || 7,
-      until: m.until || dkey(addDays(today, 30)),
+      until: m.until || dkey(today),   // "Până la" opens on today's date, not a month ahead
       weekdaysOn: !!(m.weekdays && m.weekdays.length && m.weekdays.length < 7),
       weekdays: m.weekdays && m.weekdays.length ? [...m.weekdays] : [1, 2, 3, 4, 5, 6, 0],
       alarm: e ? !!m.alarm : true,
@@ -1770,6 +1955,26 @@ const hbarRow = (label, valueText, frac, color, sub) => `<div class="hbar"><div 
   <div class="hbar-track"><span style="width:${Math.max(frac > 0 ? 2 : 0, frac * 100)}%;background:${color}"></span></div>${sub ? `<div class="hbar-sub">${sub}</div>` : ''}</div>`;
 const WEEKDAYS = ['duminica', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
 
+// every medicine dose you checked as taken, from `start` on: { e, t, date }
+function doseEvents(start) {
+  const out = [];
+  for (const e of db.entries) {
+    if (!e.med || !catById(e.cat)) continue;
+    for (const [k, arr] of Object.entries(e.med.taken || {})) {
+      const day = dayOf(k);
+      if (!day || day < startOfDay(start)) continue;
+      for (const t of arr) { const [h, m] = t.split(':').map(Number); out.push({ e, t, date: atTime(day, h, m) }); }
+    }
+  }
+  return out.sort((a, b) => b.date - a.date);
+}
+function doseRowHtml(x) {
+  return `<div class="row" data-act="open" data-id="${x.e.id}">
+    <div class="medico" style="--c:${colorOf(catById(x.e.cat))}">💊</div>
+    <div class="rbody"><div class="rtitle">${esc(x.e.title)}</div><div class="chips">${x.e.med.dose ? chip(x.e.med.dose, 'var(--muted)') : ''}${chip('✓ luată', 'var(--green)')}</div></div>
+    <div class="dtime" style="color:var(--muted);text-align:right">${x.t}<div style="font-size:12px;font-weight:600">${esc(fmtDay(x.date))}</div></div></div>`;
+}
+
 function generalStatsHtml() {
   const s = ui.stats;
   const entries = db.entries.filter(e => catById(e.cat));
@@ -1777,7 +1982,8 @@ function generalStatsHtml() {
   const { months, start } = rangeOf(s, entries.map(e => e.createdAt));
   const active = entries.filter(e => !e.done && !e.med);
   const overdueNow = active.filter(e => isOverdue(e) || reminderMissed(e)).length;
-  const done = entries.filter(e => e.done && e.doneAt && e.doneAt >= +start);
+  const done = entries.filter(e => e.done && !e.med && e.doneAt && e.doneAt >= +start);
+  const doses = doseEvents(start);            // medicine doses checked as taken count as "bifate" too
   const added = entries.filter(e => e.createdAt >= +start);
   const withDl = done.filter(e => e.hasDeadline && parseLocal(e.deadline));
   const onTime = withDl.filter(e => {
@@ -1787,18 +1993,19 @@ function generalStatsHtml() {
   const rate = withDl.length ? Math.round((onTime / withDl.length) * 100) + '%' : '–';
 
   const metric = s.act || 'done';
-  const src = metric === 'done' ? done.map(e => new Date(e.doneAt)) : added.map(e => new Date(e.createdAt));
+  const src = metric === 'done' ? [...done.map(e => new Date(e.doneAt)), ...doses.map(x => x.date)] : added.map(e => new Date(e.createdAt));
   const buckets = monthBuckets(months, start);
   const byKey = Object.fromEntries(buckets.map(b => [b.key, b]));
   src.forEach(d => { const b = byKey[monthKey(d)]; if (b) b.n++; });
   const sel = byKey[s.sel] || buckets[buckets.length - 1];
 
   // per list
-  const per = cats().map(c => ({ c, n: done.filter(e => e.cat === c.id).length })).filter(x => x.n).sort((a, b) => b.n - a.n);
+  const per = cats().map(c => ({ c, n: done.filter(e => e.cat === c.id).length + doses.filter(x => x.e.cat === c.id).length })).filter(x => x.n).sort((a, b) => b.n - a.n);
   const pmax = per.length ? per[0].n : 0;
   // best weekday
   const wd = [0, 0, 0, 0, 0, 0, 0];
   done.forEach(e => { wd[new Date(e.doneAt).getDay()]++; });
+  doses.forEach(x => { wd[x.date.getDay()]++; });
   const best = Math.max(...wd);
   // reminders
   const rem = entries.filter(e => e.hasReminder);
@@ -1810,7 +2017,7 @@ function generalStatsHtml() {
     <div class="tiles">
       ${tile('Active acum', active.length, 'var(--accent)', 'st-active')}
       ${tile('Întârziate acum', overdueNow, overdueNow ? 'var(--red)' : 'var(--muted)', 'st-overdue')}
-      ${tile('Bifate', done.length, 'var(--green)', 'st-done')}
+      ${tile('Bifate', done.length + doses.length, 'var(--green)', 'st-done')}
       ${tile('Gata la timp', rate, 'var(--blue)', 'st-ontime')}
     </div>
     <div class="segin" style="margin-top:20px">
@@ -1822,7 +2029,10 @@ function generalStatsHtml() {
       <div class="bars">${barsHtml(buckets, sel.key, metric === 'done' ? '#2EB87A' : '#7C5CFA', 'stat-sel', b => b.n)}</div>
     </div>
     <div class="ffoot">${metric === 'done' ? 'Câte ai bifat' : 'Câte ai adăugat'} în fiecare lună. Apasă sau glisează peste luni ca să vezi ce e în ele.</div>
-    ${monthListHtml(sel, (metric === 'done' ? done.filter(e => monthKey(new Date(e.doneAt)) === sel.key) : added.filter(e => monthKey(new Date(e.createdAt)) === sel.key)).filter(e => !e.med), metric === 'done' ? 'Bifate' : 'Adăugate')}
+    ${monthListHtml(sel,
+      (metric === 'done' ? done.filter(e => monthKey(new Date(e.doneAt)) === sel.key) : added.filter(e => monthKey(new Date(e.createdAt)) === sel.key)).filter(e => !e.med),
+      metric === 'done' ? 'Bifate' : 'Adăugate',
+      metric === 'done' ? doses.filter(x => monthKey(x.date) === sel.key) : [])}
     ${per.length ? `<div class="fhead">Bifate pe liste</div><div class="form">${per.map(x => hbarRow(`${x.c.icon} ${esc(x.c.name)}`, x.n, pmax ? x.n / pmax : 0, colorOf(x.c), '')).join('')}</div>` : ''}
     <div class="fhead">Remindere</div>
     <div class="tiles three">
@@ -1833,6 +2043,7 @@ function generalStatsHtml() {
     ${best ? `<div class="fhead">Pe scurt</div><div class="form">
       <div class="field"><span class="lbl">Ziua în care bifezi cel mai mult</span><b>${cap(WEEKDAYS[wd.indexOf(best)])}</b></div>
       <div class="field"><span class="lbl">Adăugate în perioadă</span><b>${added.length}</b></div>
+      ${doses.length ? `<div class="field"><span class="lbl">Doze de medicamente luate</span><b>${doses.length}</b></div>` : ''}
       ${withDl.length ? `<div class="field"><span class="lbl">Cu termen, făcute la timp</span><b>${onTime} din ${withDl.length}</b></div>` : ''}
     </div>` : ''}`;
 }
@@ -1870,12 +2081,29 @@ function screenStats() {
     ${body}`;
 }
 
-// items of the selected month, under a chart
-function monthListHtml(sel, items, word) {
+// items of the selected month, under a chart: one row per list (with how many), tap to expand it
+const accOpen = new Set();
+function monthListHtml(sel, items, word, doses = []) {
   const month = cap(fMonthLong.format(sel.d));
-  if (!items.length) return `<div class="fhead">${esc(month)}</div><div class="footnote" style="margin-top:0">Nimic în luna asta.</div>`;
-  return `<div class="fhead">${esc(word)} în ${esc(month.toLowerCase())} · ${nItems(items.length)}</div>
-    <div class="group">${sortEntries(items).map(e => rowHtml(e, { showCat: true })).join('')}</div>`;
+  const total = items.length + doses.length;
+  if (!total) return `<div class="fhead">${esc(month)}</div><div class="footnote" style="margin-top:0">Nimic în luna asta.</div>`;
+  const blocks = cats().map(c => {
+    const list = items.filter(e => e.cat === c.id);
+    const ds = doses.filter(x => x.e.cat === c.id);
+    const n = list.length + ds.length;
+    if (!n) return '';
+    const key = `${sel.key}:${c.id}`;
+    const count = ds.length && !list.length ? `${ds.length} ${ds.length === 1 ? 'doză' : 'doze'}` : n;
+    return `<div class="acc ${accOpen.has(key) ? 'open' : ''}">
+      <button class="acc-head" data-act="acc" data-k="${key}">
+        <span class="caticon" style="--c:${colorOf(c)};width:32px;height:32px;font-size:17px;border-radius:9px">${c.icon}</span>
+        <span class="acc-name">${esc(c.name)}</span><b class="acc-n" style="--c:${colorOf(c)}">${count}</b><span class="acc-chev">${ICON.chev}</span>
+      </button>
+      <div class="acc-body"><div class="acc-inner">${sortEntries(list).map(e => rowHtml(e, {})).join('')}${ds.map(doseRowHtml).join('')}</div></div>
+    </div>`;
+  }).join('');
+  return `<div class="fhead">${esc(word)} în ${esc(month.toLowerCase())} · ${nItems(total)}</div><div class="group accs">${blocks}</div>
+    <div class="footnote">Apasă pe o listă ca s-o desfaci.</div>`;
 }
 
 // tiles in "Statistici" that open the matching items (shown in the search view, with a ✕ to go back)
@@ -1884,7 +2112,11 @@ function moneyStart() { return rangeOf(ui.stats, moneyItems().map(x => +x.date))
 const STAT_FILTERS = {
   'st-active': { label: 'Active acum', items: () => db.entries.filter(e => !e.done && !e.med && catById(e.cat)) },
   'st-overdue': { label: 'Întârziate acum', items: () => db.entries.filter(e => !e.done && !e.med && (isOverdue(e) || reminderMissed(e))) },
-  'st-done': { label: 'Bifate în perioadă', items: () => db.entries.filter(e => e.done && !e.med && e.doneAt >= +statStart()) },
+  'st-done': { label: 'Bifate în perioadă', items: () => {
+    const st = statStart();
+    const meds = [...new Set(doseEvents(st).map(x => x.e))];
+    return [...db.entries.filter(e => e.done && !e.med && e.doneAt >= +st), ...meds];
+  } },
   'st-ontime': { label: 'Cu termen, bifate', items: () => db.entries.filter(e => e.done && !e.med && e.hasDeadline && e.doneAt >= +statStart()) },
   'st-remup': { label: 'Remindere programate', items: () => db.entries.filter(e => e.hasReminder && !e.done && !reminderMissed(e)) },
   'st-remmiss': { label: 'Remindere ratate', items: () => db.entries.filter(reminderMissed) },
@@ -2121,12 +2353,39 @@ document.addEventListener('click', ev => {
       if (i >= 0) s.d.weekdays.splice(i, 1); else s.d.weekdays.push(w);
       renderSheet(); break;
     }
-    case 'm-dur': s.d.durType = el.dataset.v; renderSheet(); break;
+    case 'm-dur':
+      s.d.durType = el.dataset.v;
+      // "Până la" never starts before the start day
+      if (s.d.durType === 'until' && s.d.until < s.d.start) s.d.until = s.d.start;
+      renderSheet(); break;
     case 'm-days': s.d.days = Math.max(1, Math.min(3650, (+s.d.days || 1) + +el.dataset.v)); renderSheet(); break;
     case 'm-daysset': s.d.days = +el.dataset.v; renderSheet(); break;
     case 'search-cat': if (ui.searching && ui.searchQ) addRecent(ui.searchQ); ui.searching = false; ui.searchQ = ''; ui.searchFilter = null; ui.sheet = null; renderSheet(); ui.tab = 'lists'; ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); window.scrollTo(0, 0); break;
     case 'open': { const e = entryById(id); if (ui.searching && ui.searchQ) addRecent(ui.searchQ); if (e) openEntry(e.cat, e.id); break; }
     case 'search-cancel': exitSearch(); break;
+    case 'acc': {
+      // expand / collapse a list inside the month view (animated, no re-render)
+      const box = el.closest('.acc');
+      const k = el.dataset.k;
+      if (box.classList.toggle('open')) accOpen.add(k); else accOpen.delete(k);
+      break;
+    }
+    // shopping list
+    case 'qa-add': {
+      const inp = document.getElementById('quickadd');
+      const c = catById(id);
+      if (c && inp && shopAdd(c, inp.value)) { render(); document.getElementById('quickadd')?.focus(); }
+      break;
+    }
+    case 'qa-again': { const c = catById(id); if (c && shopAdd(c, el.dataset.v)) { render(); toast(`${el.dataset.v} adăugat`); } break; }
+    case 'cart-clear': {
+      const c = catById(id);
+      const n = db.entries.filter(e => e.cat === id && e.done).length;
+      openActions(`Scoți din listă cele ${n} produse din coș?`, [
+        { label: '🛒 Golește coșul', danger: true, run: () => { db.entries = db.entries.filter(e => !(e.cat === id && e.done)); save(); render(); toast('Coșul e gol'); } },
+      ]);
+      break;
+    }
     case 'tile-filter': ui.searchFilter = el.dataset.f; ui.searchQ = ''; ui.searching = true; render(); window.scrollTo(0, 0); break;
     case 'sugg': {
       ui.searchFilter = el.dataset.v; ui.searchQ = '';
@@ -2330,6 +2589,15 @@ document.addEventListener('focusout', ev => {
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && ev.target.id === 'newsub') { ev.preventDefault(); addDraftSub(); }
   else if (ev.key === 'Enter' && ev.target.id === 'f-title') { ev.preventDefault(); ev.target.blur(); }
+  else if (ev.key === 'Enter' && ev.target.id === 'quickadd') {
+    ev.preventDefault();
+    const c = catById(ev.target.dataset.cat);
+    if (c && shopAdd(c, ev.target.value)) {
+      render();
+      const inp = document.getElementById('quickadd');
+      if (inp) inp.focus();               // keep typing the next product
+    }
+  }
   else if (ev.key === 'Enter' && ev.target.id === 'gsearch') { ev.preventDefault(); addRecent(ev.target.value); ev.target.blur(); }
 });
 
@@ -2643,6 +2911,7 @@ document.addEventListener('pointermove', ev => {
     || (ev.clientX < sr.left + sr.width / 2 ? btns[0] : btns[btns.length - 1]);
   if (over !== segDrag.over) { segDrag.over = over; try { navigator.vibrate?.(6); } catch (e) { /* ignore */ } }
   btns.forEach(b => b.classList.toggle('over', b === over));
+  magnify(btns, ev.clientX, 1.12, 1.1);
   const w = over.offsetWidth;
   const left = Math.max(2, Math.min(seg.offsetWidth - w - 2, ev.clientX - sr.left - w / 2));
   segDrag.left = left; segDrag.width = w;
@@ -2655,6 +2924,7 @@ function endSegDrag(ev) {
   segDrag = null;
   d.seg.classList.remove('dragging');
   d.seg.querySelectorAll('.over').forEach(b => b.classList.remove('over'));
+  unmagnify([...d.seg.querySelectorAll(':scope > button')]);
   if (!d.moved || !d.over) return;
   segPos[segKey(d.seg)] = { left: d.left, width: d.width };   // the bubble continues from where your finger was
   if (d.over.classList.contains('on')) { initSegs(d.seg.parentElement); }
