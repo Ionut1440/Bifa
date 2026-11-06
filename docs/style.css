@@ -357,7 +357,16 @@ body.inapp #tabbar { display: none; }
 
 /* shopping: quick add */
 .quickadd { display: flex; align-items: center; gap: 8px; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); padding: 6px 6px 6px 12px; }
-.quickadd .qa-plus { width: 26px; height: 26px; border-radius: 13px; background: var(--c); color: #fff; display: grid; place-items: center; flex: 0 0 auto; }
+.quickadd .qa-plus { width: 30px; height: 30px; border-radius: 15px; background: var(--c); color: #fff; display: grid; place-items: center; flex: 0 0 auto; transition: transform .15s; }
+.quickadd .qa-plus:active { transform: scale(.88); }
+.qa-sugg:empty { display: none; }
+.qa-sugg { margin-top: 8px; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; animation: slIn .22s cubic-bezier(.2,.9,.3,1); }
+.qa-sugg button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; text-align: left; position: relative; }
+.qa-sugg button + button::before { content: ""; position: absolute; top: 0; left: 46px; right: 0; border-top: .5px solid var(--line); }
+.qa-sugg button:active { background: var(--card2); }
+.qs-ico { width: 22px; text-align: center; font-size: 17px; }
+.qs-name { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qs-aisle { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .quickadd .qa-plus svg { width: 15px; height: 15px; }
 .quickadd input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 16px; padding: 10px 0; }
 .quickadd .qa-btn { background: var(--c); color: #fff; font-weight: 700; font-size: 14px; padding: 9px 13px; border-radius: 10px; }

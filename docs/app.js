@@ -107,8 +107,8 @@ function templateRules(t) {
   if (t === 'reminder') set({ usesDeadline: false, reminderMode: 'always', doneLabel: 'Gata', placeholder: 'Ce să-ți amintesc?' });
   if (t === 'blank') set({ usesDeadline: false, groupMode: 'none' });
   // "app" lists open a full mini-app (the Concediu / Calendar Birou apps) inside MindMe
-  if (t === 'leave') set({ kind: 'app', appUrl: 'concediu/', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false });
-  if (t === 'office') set({ kind: 'app', appUrl: 'birou/', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false });
+  if (t === 'leave') set({ kind: 'app', appUrl: 'concediu.html', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false });
+  if (t === 'office') set({ kind: 'app', appUrl: 'birou.html', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false });
   if (t === 'shopping') set({ kind: 'shopping', usesDeadline: false, reminderMode: 'off', usesGroups: true, groupMode: 'group', summary: false, placeholder: 'Ce cumperi?', doneLabel: 'În coș' });
   if (t === 'meds') set({ kind: 'meds', usesDeadline: false, reminderMode: 'off', groupMode: 'none', summary: false, placeholder: 'Numele medicamentului', doneLabel: 'Oprit' });
   return r;
@@ -146,7 +146,7 @@ function aisles() {
     ['Congelate', '🧊', 'congelat congelate inghetata cuburi gheata'],
     ['Băcănie', '🍝', 'paste spaghete penne macaroane taitei orez faina zahar sare piper ulei otet conserv ton fasole mazare porumb linte naut malai gris fulgi cereale musli ketchup mustar maioneza sos bulion pasta de tomate condiment boia oregano cimbru drojdie praf de copt miere gem dulceata unt de arahide nutella supa foi quinoa masline cornflakes'],
     ['Dulciuri și snacks', '🍫', 'ciocolat biscuit napolitan chips bomboan prajitur tort alune arahide nuci migdale caju seminte popcorn covrigei snacks baton guma jeleuri dulciuri'],
-    ['Băuturi', '🥤', 'apa suc sucuri cola pepsi fanta sprite bere vin sampanie prosecco whisky vodka tuica gin rom lichior limonada energizant red bull nectar sirop tonic'],
+    ['Băuturi', '🥤', 'apa suc sucuri cola pepsi fanta sprite bere vin sampanie prosecco whisky vodka tuica gin lichior limonada energizant red bull nectar sirop tonic'],
     ['Cafea și ceai', '☕', 'cafea ceai capsule espresso nescafe cacao'],
     ['Curățenie', '🧽', 'detergent balsam de rufe clor domestos vanish burete bureti lavete saci menajer saci de gunoi solutie geamuri vase pastile vase tablete vase hartie de bucatarie prosoape de hartie servetele folie odorizant mop manusi'],
     ['Igienă și cosmetice', '🧴', 'sapun sampon balsam de par gel de dus pasta de dinti periuta deodorant hartie igienica crema lame aparat de ras spuma de ras tampoane absorbante dischete betisoare ata dentara apa de gura parfum lotiune servetele umede'],
@@ -156,6 +156,33 @@ function aisles() {
     ['Altele', '🧺', ''],
   ];
 }
+// big product catalog (nice names with diacritics) used for suggestions while typing and for sorting.
+// Brands from Romanian shops included, so "Snickers" or "lapte Zuzu" land in the right aisle.
+function shopCatalog() {
+  const C = {
+    'Fructe și legume': 'Mere, Banane, Portocale, Lămâi, Lime, Mandarine, Clementine, Grepfrut, Struguri, Căpșuni, Afine, Zmeură, Mure, Pere, Kiwi, Ananas, Pepene verde, Pepene galben, Piersici, Nectarine, Caise, Cireșe, Vișine, Prune, Avocado, Mango, Rodie, Smochine, Curmale, Roșii, Roșii cherry, Castraveți, Ardei gras, Ardei kapia, Ardei iute, Ceapă, Ceapă roșie, Ceapă verde, Usturoi, Cartofi, Cartofi dulci, Morcovi, Varză, Varză roșie, Salată verde, Spanac, Rucola, Broccoli, Conopidă, Dovlecei, Dovleac, Vinete, Ciuperci, Pătrunjel, Mărar, Leuștean, Busuioc, Țelină, Ridichi, Sfeclă roșie, Praz, Ghimbir, Fasole verde, Porumb dulce, Varză chinezească',
+    'Brutărie': 'Pâine, Pâine albă, Pâine neagră, Pâine integrală, Franzelă, Baghetă, Chifle, Covrigi, Cornuri, Croissant, Lipii, Pâine toast, Cozonac, Pandișpan, Blat de tort, Chec, Plăcintă, Merdenele, Foietaj, Vel Pitar, Boromir, 7Days',
+    'Lactate și ouă': 'Lapte, Lapte Zuzu, Lapte Napolact, Lapte Covalact, Lapte fără lactoză, Lapte de ovăz, Lapte de migdale, Iaurt, Iaurt grecesc, Iaurt de băut, Activia, Danone, Kefir, Sana, Lapte bătut, Smântână, Frișcă, Unt, Margarină, Brânză, Brânză de vaci, Telemea, Telemea de vacă, Cașcaval, Mozzarella, Parmezan, Mascarpone, Ricotta, Brânză topită, Hochland, Philadelphia, Delaco, Olympus, President, Babybel, Ouă, Budincă, Desert lactat',
+    'Carne și pește': 'Piept de pui, Pulpe de pui, Aripioare de pui, Pui întreg, Carne tocată, Carne de porc, Ceafă de porc, Cotlet de porc, Mușchi de porc, Carne de vită, Mușchi de vită, Carne de curcan, Carne de miel, Mici, Ficat de pui, Somon, Păstrăv, Crap, Doradă, Biban, Creveți, File de pește, Cod',
+    'Mezeluri': 'Salam, Salam de Sibiu, Șuncă, Parizer, Crenvurști, Cârnați, Bacon, Kaiser, Pastramă, Prosciutto, Pate, Cris-Tim, Aldis, Caroli, Scandia, Angst, Pate de ficat',
+    'Congelate': 'Înghețată, Magnum, Algida, Cornetto, Pizza congelată, Legume congelate, Cartofi prăjiți congelați, Pește congelat, Gheață, Fructe congelate',
+    'Băcănie': 'Paste, Spaghete, Penne, Fusilli, Macaroane, Tăiței, Barilla, Panzani, Orez, Făină, Mălai, Griș, Zahăr, Zahăr pudră, Sare, Piper, Ulei, Ulei de măsline, Oțet, Fasole boabe, Mazăre, Porumb conservă, Ton conservă, Linte, Năut, Fulgi de ovăz, Cereale, Musli, Cornflakes, Ketchup, Muștar, Maioneză, Sos de roșii, Bulion, Pastă de tomate, Condimente, Boia, Oregano, Cimbru, Drojdie, Praf de copt, Zahăr vanilat, Miere, Gem, Dulceață, Unt de arahide, Nutella, Supă la plic, Knorr, Maggi, Kotanyi, Foi de lasagna, Quinoa, Măsline, Conserve, Heinz, Hellmann\'s, Develey',
+    'Dulciuri și snacks': 'Ciocolată, Ciocolată cu lapte, Ciocolată neagră, Milka, Snickers, Mars, Twix, Bounty, KitKat, Lion, Kinder, Kinder Bueno, Ferrero Rocher, Raffaello, Toblerone, Lindt, Heidi, Poiana, Rom, Africana, Kandia, Biscuiți, Oreo, Belvita, Eugenia, Napolitane, Joe, Chips, Lay\'s, Chio, Pringles, Doritos, Bomboane, Haribo, Jeleuri, M&M\'s, Skittles, Mentos, Gumă, Orbit, Tic Tac, Prăjitură, Tort, Alune, Arahide, Nuci, Migdale, Caju, Semințe, Popcorn, Covrigei, Batoane proteice, Croissant 7Days, Toffifee',
+    'Băuturi': 'Apă plată, Apă minerală, Borsec, Dorna, Aqua Carpatica, Bucovina, Izvorul Minunilor, Suc, Suc de portocale, Coca-Cola, Pepsi, Fanta, Sprite, Schweppes, 7Up, Tymbark, Cappy, Granini, Prigat, Limonadă, Ice tea, Fuze Tea, Red Bull, Monster, Hell, Bere, Ursus, Timișoreana, Ciuc, Heineken, Stella Artois, Tuborg, Carlsberg, Peroni, Bergenbier, Vin roșu, Vin alb, Vin rose, Șampanie, Prosecco, Whisky, Vodcă, Gin, Rom de băut, Țuică, Lichior, Sirop',
+    'Cafea și ceai': 'Cafea, Cafea boabe, Cafea măcinată, Capsule cafea, Jacobs, Lavazza, Tchibo, Doncafe, Nescafe, Illy, Ceai, Ceai verde, Ceai negru, Lipton, Cacao, Ciocolată caldă',
+    'Curățenie': 'Detergent rufe, Ariel, Persil, Dero, Bonux, Omo, Balsam de rufe, Lenor, Detergent de vase, Fairy, Pur, Tablete mașină de spălat vase, Finish, Somat, Calgon, Soluție de geamuri, Cif, Domestos, Mr. Proper, Vanish, Clor, Bureți, Lavete, Saci menajeri, Saci de gunoi, Hârtie de bucătărie, Prosoape de hârtie, Șervețele, Folie alimentară, Folie de aluminiu, Odorizant, Mop, Mănuși',
+    'Igienă și cosmetice': 'Hârtie igienică, Zewa, Săpun, Săpun lichid, Gel de duș, Șampon, Balsam de păr, Pastă de dinți, Colgate, Sensodyne, Periuță de dinți, Apă de gură, Ață dentară, Deodorant, Nivea, Dove, Rexona, Head & Shoulders, Gillette, Lame de ras, Spumă de ras, Palmolive, Garnier, Cremă de mâini, Cremă de față, Loțiune de corp, Dischete demachiante, Bețișoare, Absorbante, Tampoane, Servețele umede, Parfum',
+    'Bebeluși': 'Scutece, Pampers, Huggies, Lapte praf, Piure pentru copii, Biberon, Servețele bebeluși',
+    'Animale': 'Hrană câini, Hrană pisici, Whiskas, Pedigree, Friskies, Purina, Felix, Nisip pisici, Recompense câini',
+    'Farmacie': 'Paracetamol, Nurofen, Ibuprofen, Algocalmin, Vitamine, Vitamina C, Magneziu, Plasturi, Sirop de tuse, Spray nazal, Termometru',
+  };
+  const out = [];
+  for (const [aisle, list] of Object.entries(C)) list.split(',').map(s => s.trim()).filter(Boolean).forEach(name => out.push({ name, aisle }));
+  return out;
+}
+var SHOP_CATALOG;
+function catalog() { if (!SHOP_CATALOG) SHOP_CATALOG = shopCatalog(); return SHOP_CATALOG; }
+
 // keyword → aisle, longest keywords first so "lapte praf" beats "lapte" and "apa de gura" beats "apa"
 function aisleKeywords() {
   const out = [];
@@ -169,6 +196,11 @@ function aisleKeywords() {
     let rest = ' ' + words + ' ';
     for (const p of phrases) if (rest.includes(' ' + p + ' ')) { out.push([p, name]); rest = rest.replace(' ' + p + ' ', ' '); }
     rest.split(' ').filter(Boolean).forEach(w => out.push([w, name]));
+  }
+  // every catalog product / brand is a keyword too ("snickers", "lapte zuzu", "aqua carpatica"...)
+  for (const p of catalog()) {
+    const k = normText(p.name).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (k) out.push([k, p.aisle]);
   }
   return out.sort((a, b) => b[0].length - a[0].length);
 }
@@ -206,7 +238,8 @@ function addAppListsOnce(d) {
   let order = Math.max(-1, ...d.categories.map(c => c.order || 0)) + 1;
   for (const t of ['leave', 'office']) {
     const url = templateRules(t).appUrl;
-    if (d.categories.some(c => c.kind === 'app' && c.appUrl === url)) continue;
+    const old = url.replace('.html', '/');
+    if (d.categories.some(c => c.kind === 'app' && (c.appUrl === url || c.appUrl === old))) continue;
     d.categories.push({ id: uid(), name: TEMPLATES[t].label, icon: TEMPLATES[t].icon, color: TEMPLATES[t].color, order: order++, ...templateRules(t) });
   }
   d.appsAdded = true;
@@ -609,7 +642,7 @@ function rowHtml(e, opts = {}) {
       <div class="subrow ${s.done ? 'on' : ''}"><button class="subcheck ${s.done ? 'on' : ''}" style="--c:${col}" data-act="sub" data-id="${e.id}" data-sid="${s.id}">${ICON.check}</button><span>${esc(s.title)}</span></div>`).join('')}
       ${subs.length > 8 ? `<div class="footnote" style="margin:0">+ încă ${subs.length - 8}</div>` : ''}</div>` : '';
 
-  return `<div class="swipe" data-swipe="entry" data-id="${e.id}" ${opts.reorder ? 'data-reorder="entry"' : ''}><button class="swipe-del" data-act="swipe-del" data-kind="entry" data-id="${e.id}">${ICON.trash}<span>Șterge</span></button>
+  return `<div class="swipe" data-swipe="entry" data-id="${e.id}" ${opts.reorder ? `data-reorder="${opts.reorder === 'shop' ? 'shop' : 'entry'}"` : ''}><button class="swipe-del" data-act="swipe-del" data-kind="entry" data-id="${e.id}">${ICON.trash}<span>Șterge</span></button>
   <div class="row swipe-content ${e.done ? 'done' : ''}" data-act="open" data-id="${e.id}">
     <button class="check ${e.done ? 'on' : ''}" style="--c:${col}" data-act="toggle" data-id="${e.id}" aria-label="Bifează">${ICON.check}</button>
     <div class="rbody">
@@ -681,7 +714,7 @@ function screenLists() {
     let sub = active.length ? `${active.length} ${active.length === 1 ? 'activ' : 'active'}` : 'Totul e bifat ✓';
     if (today) sub += ` · ${today} azi`;
     if (over) sub += ` · ${over} întârziat${over === 1 ? '' : 'e'}`;
-    if (c.kind === 'app') sub = c.appUrl === 'birou/' ? 'Zile de birou pe lună, după reguli' : 'Sold, calendar și idei de punți';
+    if (c.kind === 'app') sub = appUrlOf(c) === 'birou.html' ?'Zile de birou pe lună, după reguli' : 'Sold, calendar și idei de punți';
     if (isMedCat(c)) {
       const running = items.filter(e => e.med && medStatus(e).state === 'active').length;
       const doses = dosesOn(new Date()).filter(x => x.e.cat === c.id);
@@ -1544,17 +1577,59 @@ function refreshSearch() {
 }
 
 // ---------- mini-apps inside MindMe (Zile de concediu, Zile la birou) ----------
+// the mini-apps are single files now (easy to upload); old saved lists still point to the folder names
+const appUrlOf = c => ({ 'concediu/': 'concediu.html', 'birou/': 'birou.html' }[c.appUrl] || c.appUrl);
 function screenApp(c) {
   return `<div class="appview">
     <div class="appbar"><button class="back" data-act="back">${ICON.back}Liste</button>
       <div class="apptitle">${c.icon} ${esc(c.name)}</div><span class="appbar-sp"></span></div>
-    <iframe id="appframe" data-cat="${c.id}" src="${esc(c.appUrl)}" title="${esc(c.name)}"></iframe>
+    <iframe id="appframe" data-cat="${c.id}" src="${esc(appUrlOf(c))}" title="${esc(c.name)}"></iframe>
   </div>`;
 }
 
 // ---------- shopping list ----------
 const isShopCat = c => c?.kind === 'shopping';
-function shopAdd(c, text) {
+// suggestions while typing: what you bought before + the product catalog, best matches first
+function shopSuggestions(c, q) {
+  const qn = norm(q).trim();
+  if (!qn) return [];
+  const active = new Set(db.entries.filter(e => e.cat === c.id && !e.done).map(e => norm(e.title)));
+  const seen = new Set();
+  const out = [];
+  const consider = (name, aisle, bonus) => {
+    const n = norm(name);
+    if (seen.has(n) || active.has(n)) return;
+    let s = 0;
+    if (n === qn) s = 100;
+    else if (n.startsWith(qn)) s = 60;
+    else if (n.split(/\s+/).some(w => w.startsWith(qn))) s = 40;
+    else if (qn.length >= 3 && n.includes(qn)) s = 20;
+    if (!s) return;
+    seen.add(n);
+    out.push({ name, aisle: aisle || guessAisle(name), s: s + bonus - n.length * 0.1 });
+  };
+  Object.values(c.history || {}).forEach(h => consider(h.name, guessAisle(h.name), 15 + Math.min(10, h.n)));
+  catalog().forEach(p => consider(p.name, p.aisle, 0));
+  out.sort((a, b) => b.s - a.s);
+  return out.slice(0, 6);
+}
+function shopSuggestHtml(c, q) {
+  const raw = q.trim();
+  if (!raw) return '';
+  const list = shopSuggestions(c, raw);
+  const typed = raw.charAt(0).toUpperCase() + raw.slice(1);
+  const exact = list.some(x => norm(x.name) === norm(raw));
+  const rows = list.map(x => `<button data-act="qa-pick" data-id="${c.id}" data-v="${esc(x.name)}" data-g="${esc(x.aisle)}">
+      <span class="qs-ico">${aisleIcon(x.aisle)}</span><span class="qs-name">${esc(x.name)}</span><span class="qs-aisle">${esc(x.aisle)}</span></button>`);
+  if (!exact && !raw.includes(',')) {
+    const g = guessAisle(raw);
+    rows.push(`<button data-act="qa-pick" data-id="${c.id}" data-v="${esc(typed)}" data-g="${esc(g)}">
+      <span class="qs-ico">＋</span><span class="qs-name">Adaugă „${esc(typed)}”</span><span class="qs-aisle">${aisleIcon(g)} ${esc(g)}</span></button>`);
+  }
+  return rows.join('');
+}
+
+function shopAdd(c, text, forcedGroup) {
   const names = String(text || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
   let added = 0, dup = 0;
   for (const raw of names) {
@@ -1562,7 +1637,7 @@ function shopAdd(c, text) {
     if (db.entries.some(e => e.cat === c.id && !e.done && norm(e.title) === norm(title))) { dup++; continue; }
     const now = new Date();
     db.entries.push({
-      id: uid(), createdAt: Date.now(), cat: c.id, title, details: '', group: guessAisle(title), done: false, doneAt: null,
+      id: uid(), createdAt: Date.now(), cat: c.id, title, details: '', group: (names.length === 1 && forcedGroup) || guessAisle(title), done: false, doneAt: null,
       hasDeadline: false, deadline: toLocal(now), deadlineTime: false, hasAmount: false, amount: 0, currency: c.currency || 'RON',
       paid: false, dir: 'out', vendor: '', tracking: '', priority: 0, hasReminder: false, reminder: toLocal(now), repeat: 'none', subs: [],
     });
@@ -1593,10 +1668,10 @@ function screenShopping(c) {
       <div class="right"><button class="iconbtn" data-act="cat-menu" data-id="${c.id}">${ICON.more}</button></div></div>
     <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
     <div class="quickadd" style="--c:${col}">
-      <span class="qa-plus">${ICON.plus}</span>
-      <input id="quickadd" type="text" placeholder="Adaugă produs (ex: lapte, pâine, ouă)" autocomplete="off" autocorrect="off" enterkeyhint="done" data-cat="${c.id}">
-      <button class="qa-btn" data-act="qa-add" data-id="${c.id}">Adaugă</button>
+      <button class="qa-plus" data-act="qa-add" data-id="${c.id}" aria-label="Adaugă">${ICON.plus}</button>
+      <input id="quickadd" type="text" placeholder="Adaugă produs (ex: lapte Zuzu, Snickers)" autocomplete="off" autocorrect="off" enterkeyhint="done" data-cat="${c.id}">
     </div>
+    <div id="qasugg" class="qa-sugg"></div>
     ${freq.length ? `<div class="sl-title" style="margin:14px 4px 8px">Cumpărate des · atinge ca să adaugi</div>
       <div class="quick qa-freq" style="--pink:${col};padding:0 0 4px">${freq.map(h => `<button data-act="qa-again" data-id="${c.id}" data-v="${esc(h.name)}">＋ ${esc(h.name)}</button>`).join('')}</div>` : ''}
     ${total ? `<div class="medtoday" style="--c:${col};margin-top:14px">
@@ -1605,10 +1680,10 @@ function screenShopping(c) {
     ${!total ? `<div class="empty"><div class="big">🛒</div><b>Lista e goală</b>Scrie ce ai de luat mai sus și apasă Enter. Produsele se așază singure pe raioane.</div>` : ''}
     ${!active.length && cart.length ? `<div class="banner" style="margin-top:12px"><b>Gata, ai luat tot! 🎉</b>Golește coșul când ajungi acasă.</div>` : ''}
     ${groups.map(g => `<div class="sec-title">${aisleIcon(g)} ${esc(g)} · ${by[g].length}</div>
-      <div class="group">${by[g].map(e => rowHtml(e, { showGroup: false })).join('')}</div>`).join('')}
+      <div class="group">${sortManual(by[g]).map(e => rowHtml(e, { showGroup: false, reorder: 'shop' })).join('')}</div>`).join('')}
     ${cart.length ? `<div class="sl-head" style="margin-top:26px"><span>🛒 În coș · ${cart.length}</span><button data-act="cart-clear" data-id="${c.id}">Golește coșul</button></div>
       <div class="group">${cart.map(e => rowHtml(e, { showGroup: false })).join('')}</div>` : ''}
-    ${total ? `<div class="footnote">Bifează ce pui în coș. Glisează spre dreapta ca să ștergi un produs; apasă pe el ca să schimbi raionul sau să adaugi detalii.</div>` : ''}`;
+    ${total ? `<div class="footnote">Bifează ce pui în coș. Ține apăsat pe un produs și trage-l ca să-l muți. Glisează spre dreapta ca să-l ștergi; apasă pe el ca să schimbi raionul.</div>` : ''}`;
 }
 
 // ---------- month calendar to pick several days (reminder "Zile alese din calendar") ----------
@@ -2377,6 +2452,15 @@ document.addEventListener('click', ev => {
       if (c && inp && shopAdd(c, inp.value)) { render(); document.getElementById('quickadd')?.focus(); }
       break;
     }
+    case 'qa-pick': {
+      const c = catById(id);
+      if (c && shopAdd(c, el.dataset.v, el.dataset.g)) {
+        render();
+        toast(`${el.dataset.v} → ${el.dataset.g}`);
+        document.getElementById('quickadd')?.focus();
+      }
+      break;
+    }
     case 'qa-again': { const c = catById(id); if (c && shopAdd(c, el.dataset.v)) { render(); toast(`${el.dataset.v} adăugat`); } break; }
     case 'cart-clear': {
       const c = catById(id);
@@ -2509,6 +2593,12 @@ document.addEventListener('click', ev => {
 // bound inputs (data-bind) – text fields update silently, toggles/selects re-render
 document.addEventListener('input', ev => {
   const t = ev.target;
+  if (t.id === 'quickadd') {
+    const box = document.getElementById('qasugg');
+    const c = catById(t.dataset.cat);
+    if (box && c) box.innerHTML = shopSuggestHtml(c, t.value);
+    return;
+  }
   if (t.id === 'gsearch') {
     ui.searchQ = t.value;
     if (t.value) ui.searchFilter = null;
@@ -2850,7 +2940,10 @@ function endLongDrag() {
   const newIds = [...oldIds];
   const [moved] = newIds.splice(from, 1);
   newIds.splice(to, 0, moved);
-  if (wrap.dataset.reorder === 'cat') {
+  if (wrap.dataset.reorder === 'shop') {
+    // shopping: the new order inside this aisle
+    newIds.forEach((eid, i) => { const e = entryById(eid); if (e) e.pos = i; });
+  } else if (wrap.dataset.reorder === 'cat') {
     const others = cats().filter(c => !newIds.includes(c.id));
     [...newIds.map(catById), ...others].forEach((c, i) => { if (c) c.order = i; });
   } else {
