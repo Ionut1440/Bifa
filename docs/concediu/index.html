@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Concediu">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Concediu</title>
+<style>
+  /* ---------- MindMe design tokens ---------- */
+  :root {
+    --bg: #F2F2F7; --card: #FFFFFF; --card2: #F7F7FA; --text: #111114; --muted: #8A8A93;
+    --line: rgba(60, 60, 67, .14); --accent: #7C5CFA; --red: #EB4240; --green: #2EB87A; --orange: #FF8C40;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 14px rgba(0,0,0,.05);
+    --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
+    --tabh: 58px; --segpill: #FFFFFF; --track: #EFEFF4;
+    /* nume vechi, folosite și în HTML-ul generat din script */
+    --indigo: var(--accent); --violet: #9961F2; --text2: var(--muted); --fundal: var(--bg); --linie: var(--line);
+    --coral: #FF7A59; --galben: #FFC94D;
+    --co: #14B8A6; --co-trecut: #94D3CC; --sarb: #F43F5E; --sarb-bg: #FFE4E9; --we-bg: #ECECF1; --we: #8A8A93;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000; --card: #1C1C1E; --card2: #2C2C2E; --text: #F4F4F6; --muted: #8E8E96;
+      --line: rgba(255, 255, 255, .12); --shadow: none; --segpill: #636366; --track: #2C2C2E;
+      --sarb-bg: rgba(244, 63, 94, .2); --we-bg: #2C2C2E; --we: #8E8E96;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+  body { font-size: 16px; line-height: 1.3; -webkit-font-smoothing: antialiased; overscroll-behavior-y: none;
+    padding-bottom: calc(var(--tabh) + var(--safe-b) + 36px);
+    /* fără selecție de text / meniu de copiere, în afară de câmpuri */
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  input, textarea, select { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; font: inherit; font-size: max(16px, 1em); color: var(--text); }
+  img { -webkit-user-drag: none; }
+  button { font-family: inherit; cursor: pointer; color: inherit; -webkit-user-select: none; user-select: none;
+    transition: transform .15s ease, background .2s, color .2s; }
+  button:active { transform: scale(.95); }
+  [hidden] { display: none !important; }
+
+  /* ---------- antet: sold rapid (fără titlu mare — MindMe afișează titlul deasupra) ---------- */
+  .hero { max-width: 560px; margin: 0 auto; padding: calc(var(--safe-t) + 12px) 16px 0; }
+  .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .hero p { margin: 0; color: var(--muted); font-size: 14px; font-weight: 600; min-width: 0; }
+  .an-pill { flex: 0 0 auto; border: 0; border-radius: 10px; padding: 7px 12px; font-weight: 700; font-size: 14px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .rezumat { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .rezumat div { --tc: var(--accent); border-radius: 14px; padding: 11px 12px; background: color-mix(in srgb, var(--tc) 13%, var(--card)); }
+  .rezumat div + div { --tc: var(--co); }
+  .rezumat b { display: block; font-size: 26px; line-height: 1.1; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
+  .rezumat small { display: block; margin-top: 2px; font-size: 12px; font-weight: 700; color: var(--tc); }
+
+  main { padding: 14px 16px; max-width: 560px; margin: 0 auto; }
+  .card { background: var(--card); border-radius: 14px; padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
+  .card h2 { margin: 0; font-size: 20px; font-weight: 800; }
+  .rand { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .eticheta { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; }
+  .badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .badge.viitor { background: color-mix(in srgb, var(--coral) 15%, transparent); color: var(--coral); }
+
+  .donut { display: flex; align-items: center; gap: 18px; margin: 14px 0 6px; }
+  .donut svg { flex: 0 0 120px; }
+  .donut svg > circle:first-of-type { stroke: var(--track); }
+  .donut .centru { font-size: 30px; font-weight: 800; fill: var(--text); }
+  .donut .sub { font-size: 10px; fill: var(--muted); font-weight: 600; }
+  .leg { display: grid; gap: 6px; font-size: 15px; flex: 1; }
+  .leg span { display: flex; align-items: center; gap: 8px; }
+  .leg i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .leg b { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  .setare { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: .5px solid var(--line); font-size: 15px; }
+  .setare small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .stepper { display: flex; align-items: center; gap: 6px; }
+  .stepper button { width: 34px; height: 34px; border-radius: 10px; border: 0; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-size: 20px; font-weight: 700; display: grid; place-items: center; padding: 0; }
+  .stepper b { min-width: 30px; text-align: center; font-size: 17px; font-variant-numeric: tabular-nums; }
+  /* întrerupător — mărimea standard iPhone */
+  .comutator { flex: 0 0 auto; width: 51px; height: 31px; border-radius: 31px; background: rgba(120,120,128,.24); border: 0; padding: 0; position: relative; transition: background .2s; }
+  .comutator:active { transform: none; }
+  .comutator::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 2px 5px rgba(0,0,0,.2); }
+  .comutator.on { background: var(--green); }
+  .comutator.on::after { transform: translateX(20px); }
+  .nota { font-size: 13px; color: var(--muted); line-height: 1.45; margin-top: 8px; }
+  .nota b { color: var(--text); }
+  .nota.justificat { text-align: justify; hyphens: none; -webkit-hyphens: none; }
+
+  .perioada { padding: 8px 0 8px 12px; margin: 6px 0; border-left: 4px solid var(--co); border-radius: 2px; }
+  /* fiecare rând stă pe o singură linie; potrivesteRanduri() micșorează fontul dacă nu încape */
+  .perioada b, .perioada small { display: block; white-space: nowrap; overflow: hidden; }
+  .perioada b { font-size: 15px; font-weight: 600; }
+  .perioada small { color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .gol { color: var(--muted); font-size: 14px; padding: 6px 0; }
+  .card.gol { padding: 14px; }
+  .gol-frumos { text-align: center; padding: 14px 4px 4px; color: var(--muted); }
+  .gol-frumos .ico-mare { font-size: 46px; }
+  .gol-frumos b { display: block; color: var(--text); font-size: 18px; margin: 6px 0 4px; }
+  .gol-frumos p { margin: 0 0 14px; font-size: 15px; color: var(--muted); line-height: 1.45; text-wrap: balance; }
+  .gol-frumos .chipuri { justify-content: center; margin: 0; }
+  .gol-frumos .chip { padding: 9px 14px; border-radius: 12px; font-size: 14px; box-shadow: none;
+    background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .gol-frumos .chip.activ { background: var(--accent); color: #fff; }
+
+  .cal-cap { display: flex; align-items: center; gap: 6px; }
+  .cal-cap .titlu { flex: 1; text-align: center; font-size: 17px; white-space: nowrap; font-weight: 700; background: none; border: 0; color: var(--text); padding: 8px; border-radius: 10px; }
+  .cal-cap .titlu::after { content: " ▾"; color: var(--accent); font-size: 14px; }
+  .rotund { width: 36px; height: 36px; flex: 0 0 auto; border-radius: 18px; border: 0; padding: 0; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-size: 22px; font-weight: 700; line-height: 1; display: grid; place-items: center; }
+  .buton-azi { flex: 0 0 auto; background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 0 12px; height: 34px; font-weight: 700; font-size: 14px; }
+  .grila { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 10px; touch-action: pan-y; }
+  .grila .cap { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding: 4px 0; }
+  .zi { aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;
+    border-radius: 12px; background: var(--card2); user-select: none; position: relative; cursor: pointer; transition: transform .15s, background .15s; }
+  .zi:not(.goala):active { transform: scale(.88); }
+  .zi.goala { background: transparent; cursor: default; }
+  .zi.we { background: var(--we-bg); color: var(--we); }
+  .zi.sarb { background: var(--sarb-bg); color: var(--sarb); }
+  .zi.co { background: var(--co); color: #fff; }
+  .zi.co.trecut { background: var(--co-trecut); }
+  .zi.azi { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
+  .zi.co.azi { color: #fff; }
+  .zi.sarb::after { content: ""; position: absolute; bottom: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--sarb); }
+  .legenda { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+  .legenda span { display: flex; align-items: center; gap: 6px; }
+  .legenda i { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+  .info { margin-top: 10px; font-size: 14px; color: var(--text); background: color-mix(in srgb, var(--accent) 10%, var(--card)); border-radius: 12px; padding: 10px 12px; min-height: 40px; }
+  .sarb-lista { margin-top: 6px; }
+  .sarb-lista div { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: .5px solid var(--line); font-size: 15px; }
+  .sarb-lista div:first-child { border-top: 0; }
+  .sarb-lista span { color: var(--sarb); font-weight: 700; white-space: nowrap; }
+
+  .chipuri { display: flex; gap: 8px; margin-bottom: 12px; }
+  .chip { border: 0; padding: 7px 14px; border-radius: 20px; font-weight: 600; font-size: 14px; background: var(--card); color: var(--text); }
+  /* butoane exclusive pe orizontală (anii la „Idei”) = control segmentat MindMe, cu bulă care alunecă */
+  .chipuri.seg { position: relative; gap: 0; padding: 2px; border-radius: 10px; background: rgba(118,118,128,.14); margin: 0 0 12px; }
+  .chipuri.seg::before { content: ""; position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / 2);
+    border-radius: 8px; background: var(--segpill); box-shadow: 0 1px 4px rgba(0,0,0,.14); pointer-events: none;
+    transition: transform .36s cubic-bezier(.3,1.3,.5,1); }
+  .chipuri.seg:has(.chip:nth-child(2).activ)::before { transform: translateX(100%); }
+  .chipuri.seg .chip, .chipuri.seg .chip.activ { flex: 1; position: relative; z-index: 1; background: transparent; color: var(--text);
+    box-shadow: none; border-radius: 8px; padding: 7px 0; font-size: 14px; font-weight: 600; }
+  .chipuri.seg .chip:active { transform: scale(1.04); }
+
+  .idee { background: var(--card); border-radius: 14px; padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow); border-left: 4px solid var(--coral); }
+  .idee.zero { border-left-color: var(--galben); }
+  .idee.planificat { border-left-color: var(--co); }
+  .idee-titlu { font-weight: 700; font-size: 16px; }
+  .idee-per { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .castig { --tc: var(--coral); flex: 0 0 auto; text-align: center; background: color-mix(in srgb, var(--tc) 14%, var(--card)); color: var(--tc); border-radius: 12px; padding: 6px 10px; min-width: 64px; }
+  .castig b { display: block; font-size: 22px; line-height: 1.1; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .castig small { font-size: 10px; font-weight: 700; }
+  .idee.zero .castig { --tc: #E0A000; }
+  .idee.planificat .castig { --tc: var(--co); }
+  .banda { display: flex; gap: 3px; margin: 12px 0 10px; }
+  .banda div { flex: 1; text-align: center; font-size: 10px; font-weight: 700; padding: 6px 0; border-radius: 7px; min-width: 0; }
+  .banda .b-we { background: var(--we-bg); color: var(--we); }
+  .banda .b-sarb { background: var(--sarb-bg); color: var(--sarb); }
+  .banda .b-co { background: var(--co); color: #fff; }
+  .idee-jos { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+  .idee-jos b { color: var(--text); }
+  .idee-jos button { flex: 0 0 auto; border: 0; border-radius: 10px; padding: 7px 12px; font-weight: 700; font-size: 14px;
+    background: var(--accent); color: #fff; }
+  .idee.planificat .idee-jos button { background: color-mix(in srgb, var(--co) 15%, transparent); color: var(--co); }
+
+  /* ---------- bara de jos: capsulă plutitoare „liquid glass”, ca în MindMe ---------- */
+  .tabbar { position: fixed; left: 14px; right: 14px; bottom: calc(var(--safe-b) + 10px); max-width: 520px; margin: 0 auto;
+    display: flex; padding: 6px; border-radius: 34px; z-index: 10;
+    background: linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,.38));
+    backdrop-filter: blur(22px) saturate(190%) brightness(1.04); -webkit-backdrop-filter: blur(22px) saturate(190%) brightness(1.04);
+    border: .5px solid rgba(255,255,255,.75);
+    box-shadow: 0 10px 30px rgba(20,10,60,.14), 0 1px 3px rgba(0,0,0,.08), inset 0 1px 1px rgba(255,255,255,.9), inset 0 -1px 1px rgba(255,255,255,.25); }
+  .tabbar::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(120% 90% at 20% -20%, rgba(255,255,255,.55), transparent 55%), radial-gradient(90% 80% at 110% 130%, rgba(124,92,250,.10), transparent 60%); }
+  .tabpill { position: absolute; left: 6px; top: 6px; bottom: 6px; width: calc((100% - 12px) / 3); border-radius: 28px; pointer-events: none; z-index: 0;
+    background: color-mix(in srgb, var(--accent) 15%, rgba(255,255,255,.35)); box-shadow: inset 0 1px 1px rgba(255,255,255,.6);
+    transition: transform .38s cubic-bezier(.3,1.35,.5,1); }
+  .tabbar:has(button[data-tab="cal"].activ) .tabpill { transform: translateX(100%); }
+  .tabbar:has(button[data-tab="idei"].activ) .tabpill { transform: translateX(200%); }
+  .tabbar button { flex: 1; position: relative; z-index: 1; border: 0; background: none; padding: 5px 0 4px; border-radius: 28px;
+    display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--muted); font-size: 11px; font-weight: 600; }
+  .tabbar button span { display: block; font-size: 22px; line-height: 1.1; filter: grayscale(1); opacity: .6; transition: filter .2s, opacity .2s; }
+  .tabbar button.activ { color: var(--accent); }
+  .tabbar button.activ span { filter: none; opacity: 1; }
+  @media (prefers-color-scheme: dark) {
+    .tabbar { background: linear-gradient(180deg, rgba(60,60,67,.62), rgba(30,30,34,.5)); border-color: rgba(255,255,255,.14);
+      box-shadow: 0 10px 30px rgba(0,0,0,.5), inset 0 1px 1px rgba(255,255,255,.18); }
+    .tabbar::before { background: radial-gradient(120% 90% at 20% -20%, rgba(255,255,255,.12), transparent 55%); }
+    .tabpill { background: color-mix(in srgb, var(--accent) 30%, rgba(255,255,255,.06)); box-shadow: inset 0 1px 1px rgba(255,255,255,.15); }
+  }
+
+  /* ---------- fereastra de jos: alegere lună / an ---------- */
+  .fundal-sheet { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 20; display: flex; align-items: flex-end; justify-content: center; animation: fade .2s; }
+  .sheet { background: var(--bg); width: 100%; max-width: 560px; border-radius: 14px 14px 0 0; padding: 8px 16px calc(20px + var(--safe-b)); animation: urca .25s cubic-bezier(.2,.9,.3,1); }
+  @keyframes urca { from { transform: translateY(40px); opacity: 0; } }
+  @keyframes fade { from { opacity: 0; } }
+  .maner { width: 36px; height: 5px; border-radius: 3px; background: rgba(120,120,128,.35); margin: 0 auto 12px; }
+  .sheet .rand h3 { margin: 0; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .luni { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0; }
+  .luni button { border: 0; background: var(--card); box-shadow: var(--shadow); border-radius: 12px; padding: 14px 0; font-size: 15px; font-weight: 600; color: var(--text); position: relative; }
+  .luni button.sel { background: var(--accent); color: #fff; }
+  .luni button.curenta:not(.sel) { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
+  .luni button em { position: absolute; top: 5px; right: 7px; font-style: normal; font-size: 10px; font-weight: 700; background: var(--co); color: #fff; border-radius: 999px; padding: 1px 6px; }
+  .buton-mare { width: 100%; border: 0; border-radius: 12px; padding: 13px; font-size: 16px; font-weight: 700; background: var(--accent); color: #fff; }
+
+  .toast { position: fixed; left: 50%; bottom: calc(var(--tabh) + var(--safe-b) + 30px); transform: translateX(-50%); background: var(--text); color: var(--bg);
+    padding: 11px 18px; border-radius: 22px; font-size: 14px; font-weight: 600; text-align: center; z-index: 30; max-width: 90%; box-shadow: 0 6px 20px rgba(0,0,0,.2); animation: urcaToast .25s cubic-bezier(.2,.9,.3,1); }
+  @keyframes urcaToast { from { transform: translate(-50%, 30px); opacity: 0; } }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="hero-top">
+    <p id="subtitlu"></p>
+    <button class="an-pill" id="btnAn"></button>
+  </div>
+  <div class="rezumat" id="rezumat"></div>
+</header>
+
+<main>
+  <section id="tab-sold"></section>
+
+  <section id="tab-cal" hidden>
+    <div class="card">
+      <div class="cal-cap">
+        <button class="rotund" id="lunaInapoi" aria-label="Luna anterioară">‹</button>
+        <button class="titlu" id="titluLuna"></button>
+        <button class="rotund" id="lunaInainte" aria-label="Luna următoare">›</button>
+        <button class="buton-azi" id="btnAzi">Azi</button>
+      </div>
+      <div class="grila" id="grila"></div>
+      <div class="legenda">
+        <span><i style="background:var(--co)"></i>Concediu planificat</span>
+        <span><i style="background:var(--co-trecut)"></i>Concediu luat</span>
+        <span><i style="background:var(--sarb-bg);border:1px solid var(--sarb)"></i>Sărbătoare legală</span>
+      </div>
+      <div class="info" id="info">Atinge o zi lucrătoare ca s-o marchezi (sau s-o demarchezi) ca zi de concediu.</div>
+    </div>
+    <div class="card">
+      <div class="eticheta" id="titluSarbLuna"></div>
+      <div class="sarb-lista" id="sarbLuna"></div>
+    </div>
+  </section>
+
+  <section id="tab-idei" hidden>
+    <div class="chipuri seg" id="chipuriIdei"></div>
+    <div class="card" style="padding:12px 16px">
+      <div class="nota" style="margin:0" id="notaIdei"></div>
+    </div>
+    <div id="listaIdei"></div>
+  </section>
+</main>
+
+<nav class="tabbar">
+  <i class="tabpill" aria-hidden="true"></i>
+  <button data-tab="sold" class="activ"><span>💼</span>Sold</button>
+  <button data-tab="cal"><span>📅</span>Calendar</button>
+  <button data-tab="idei"><span>🌴</span>Idei</button>
+</nav>
+
+<div class="fundal-sheet" id="picker" hidden>
+  <div class="sheet">
+    <div class="maner"></div>
+    <div class="rand">
+      <button class="rotund" id="pickInapoi">‹</button>
+      <h3 id="pickAn"></h3>
+      <button class="rotund" id="pickInainte">›</button>
+    </div>
+    <div class="luni" id="pickLuni"></div>
+    <button class="buton-mare" id="pickAzi">Înapoi la azi</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ---------- date calendaristice (UTC, fără probleme de oră de vară)
+const LUNI = ["Ianuarie","Februarie","Martie","Aprilie","Mai","Iunie","Iulie","August","Septembrie","Octombrie","Noiembrie","Decembrie"];
+const LUNI_SCURT = ["ian","feb","mar","apr","mai","iun","iul","aug","sep","oct","noi","dec"];
+const ZS = ["Du","Lu","Ma","Mi","Jo","Vi","Sâ"];
+const ZILE_LUNG = ["duminică","luni","marți","miercuri","joi","vineri","sâmbătă"];
+const ZI_MS = 864e5;
+const D = (y, m, d) => new Date(Date.UTC(y, m - 1, d));
+const adauga = (d, n) => new Date(d.getTime() + n * ZI_MS);
+const cheie = d => d.toISOString().slice(0, 10);
+const dinCheie = k => D(+k.slice(0, 4), +k.slice(5, 7), +k.slice(8, 10));
+const _acum = new Date();
+const AZI = D(_acum.getFullYear(), _acum.getMonth() + 1, _acum.getDate());
+const K_AZI = cheie(AZI);
+const AN_AZI = AZI.getUTCFullYear();
+const fmt = d => `${ZS[d.getUTCDay()]} ${d.getUTCDate()} ${LUNI_SCURT[d.getUTCMonth()]}`;
+// „Joi, 19 noiembrie”
+const fmtLung = d => { const z = ZILE_LUNG[d.getUTCDay()]; return `${z[0].toUpperCase() + z.slice(1)}, ${d.getUTCDate()} ${LUNI[d.getUTCMonth()].toLowerCase()}`; };
+const zile = n => n === 1 ? "1 zi" : `${n} zile`;
+
+// ---------- sărbători legale România (Codul muncii, art. 139)
+function pasteOrtodox(an) {
+  const a = an % 4, b = an % 7, c = an % 19;
+  const d = (19 * c + 15) % 30, e = (2 * a + 4 * b - d + 34) % 7;
+  return adauga(D(an, Math.floor((d + e + 114) / 31), (d + e + 114) % 31 + 1), 13);
+}
+const _sarb = {};
+function sarbatori(an) {
+  if (_sarb[an]) return _sarb[an];
+  const z = {};
+  const pune = (d, nume) => { const k = cheie(d); z[k] = z[k] ? z[k] + " / " + nume : nume; };
+  pune(D(an, 1, 1), "Anul Nou"); pune(D(an, 1, 2), "Anul Nou");
+  if (an >= 2024) { pune(D(an, 1, 6), "Boboteaza"); pune(D(an, 1, 7), "Sf. Ioan"); }
+  pune(D(an, 1, 24), "Ziua Unirii"); pune(D(an, 5, 1), "Ziua Muncii"); pune(D(an, 6, 1), "Ziua Copilului");
+  pune(D(an, 8, 15), "Sfânta Maria"); pune(D(an, 11, 30), "Sf. Andrei"); pune(D(an, 12, 1), "Ziua Națională");
+  pune(D(an, 12, 25), "Crăciunul"); pune(D(an, 12, 26), "Crăciunul");
+  const p = pasteOrtodox(an);
+  for (const [delta, nume] of [[-2, "Vinerea Mare"], [0, "Paștele"], [1, "Paștele"], [49, "Rusaliile"], [50, "Rusaliile"]]) pune(adauga(p, delta), nume);
+  return (_sarb[an] = z);
+}
+const numeSarb = k => sarbatori(+k.slice(0, 4))[k];
+const weekend = d => { const w = d.getUTCDay(); return w === 0 || w === 6; };
+const liber = d => weekend(d) || !!numeSarb(cheie(d));
+
+// ---------- date salvate
+const CHEIE = "zileConcediu.date";
+function incarca() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(CHEIE)); } catch (e) { d = null; }
+  if (!d) {   // prima pornire: anul curent cu 5 zile rămase (21 alocate, 16 luate)
+    d = { ani: {}, zile: {} };
+    d.ani[AN_AZI] = { alocate: 21, luateInainte: 16, report: false };
+  }
+  d.ani = d.ani || {}; d.zile = d.zile || {};
+  for (const an of [AN_AZI, AN_AZI + 1]) if (!d.ani[an]) d.ani[an] = { alocate: 21, luateInainte: 0, report: true };
+  return d;
+}
+const date = incarca();
+function salveaza() {
+  try { localStorage.setItem(CHEIE, JSON.stringify(date)); } catch (e) { toast("Eroare la salvare: " + e.message); }
+}
+
+function sold(an, adancime = 0) {
+  const c = date.ani[an];
+  if (!c) return null;
+  let luate = 0, plan = 0;
+  for (const k in date.zile) if (+k.slice(0, 4) === an) { if (k <= K_AZI) luate++; else plan++; }
+  const prec = c.report && adancime < 10 ? sold(an - 1, adancime + 1) : null;
+  const report = prec ? Math.max(0, prec.ramase) : 0;
+  const total = c.alocate + report;
+  return { total, report, alocate: c.alocate, inainte: c.luateInainte, luate, plan,
+           ramase: total - c.luateInainte - luate - plan, folosite: c.luateInainte + luate };
+}
+
+// ---------- idei de concediu: extinde fiecare bloc liber din jurul sărbătorilor
+// pentru fiecare bloc: varianta fără concediu, cea mai eficientă și cea mai lungă (max. 5 zile CO)
+function idei(an) {
+  const rez = [], vazute = new Set(), blocuri = new Set();
+  for (const hk of Object.keys(sarbatori(an)).sort()) {
+    const h = dinCheie(hk);
+    if (weekend(h)) continue;
+    let s = h, e = h;
+    while (liber(adauga(s, -1))) s = adauga(s, -1);
+    while (liber(adauga(e, 1))) e = adauga(e, 1);
+    if (blocuri.has(cheie(s))) continue;
+    blocuri.add(cheie(s));
+    const variante = [{ s, e, co: [] }];
+    for (let L = 0; L <= 4; L++) for (let R = 0; R <= 4; R++) {
+      if (L + R < 1 || L + R > 5) continue;
+      let a = s, b = e; const co = [];
+      for (let i = 0; i < L; i++) { a = adauga(a, -1); co.push(cheie(a)); while (liber(adauga(a, -1))) a = adauga(a, -1); }
+      for (let i = 0; i < R; i++) { b = adauga(b, 1); co.push(cheie(b)); while (liber(adauga(b, 1))) b = adauga(b, 1); }
+      variante.push({ s: a, e: b, co: co.sort() });
+    }
+    const valide = [];
+    for (const v of variante) {
+      v.total = Math.round((v.e - v.s) / ZI_MS) + 1;
+      if (v.co.some(k => k <= K_AZI) || v.e < AZI) continue;   // nu propunem zile din trecut
+      if (v.co.length === 0 ? v.total >= 3 : v.total >= 4 && v.total / v.co.length >= 2) valide.push(v);
+    }
+    const alese = [];
+    const zero = valide.find(v => !v.co.length);
+    if (zero) alese.push(zero);
+    const cuCo = valide.filter(v => v.co.length);
+    const ef = v => v.total / v.co.length;
+    const eficienta = cuCo.slice().sort((a, b) => ef(b) - ef(a) || a.co.length - b.co.length || a.s - b.s)[0];
+    const lunga = cuCo.slice().sort((a, b) => b.total - a.total || a.co.length - b.co.length || a.s - b.s)[0];
+    if (eficienta) alese.push(eficienta);
+    if (lunga && lunga !== eficienta && lunga.total > eficienta.total) alese.push(lunga);
+    for (const v of alese) {
+      const id = v.co.join() || cheie(v.s);
+      if (vazute.has(id)) continue;
+      vazute.add(id);
+      const nume = [];
+      for (let d = v.s; d <= v.e; d = adauga(d, 1)) { const n = numeSarb(cheie(d)); if (n && !nume.includes(n)) nume.push(n); }
+      rez.push(Object.assign(v, { nume, bloc: s }));
+    }
+  }
+  return rez.sort((x, y) => x.bloc - y.bloc || x.co.length - y.co.length);
+}
+
+// „26, 27 noi · 2, 3, 4 dec”
+function listaZile(chei) {
+  const grupuri = [];
+  for (const k of chei) {
+    const d = dinCheie(k), eticheta = LUNI_SCURT[d.getUTCMonth()], g = grupuri[grupuri.length - 1];
+    if (g && g.luna === eticheta) g.zile.push(d.getUTCDate()); else grupuri.push({ luna: eticheta, zile: [d.getUTCDate()] });
+  }
+  return grupuri.map(g => `${g.zile.join(", ")} ${g.luna}`).join(" · ");
+}
+
+// ---------- interfață
+const $ = id => document.getElementById(id);
+let tab = "sold", an = AN_AZI, luna = AZI.getUTCMonth() + 1, anIdei = AN_AZI, anPicker = an;
+
+function toast(text) {
+  document.querySelectorAll(".toast").forEach(t => t.remove());
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 3200);
+}
+
+function deseneazaAntet() {
+  $("btnAn").textContent = `${LUNI[luna - 1].slice(0, 3)} ${an} ▾`;
+  const s1 = sold(AN_AZI), s2 = sold(AN_AZI + 1);
+  $("subtitlu").textContent = `Azi: ${ZILE_LUNG[AZI.getUTCDay()]}, ${AZI.getUTCDate()} ${LUNI[AZI.getUTCMonth()].toLowerCase()} ${AN_AZI}`;
+  $("rezumat").innerHTML =
+    `<div><b>${s1.ramase}</b><small>${s1.ramase === 1 ? "zi rămasă" : "zile rămase"} în ${AN_AZI}</small></div>` +
+    `<div><b>${s2.ramase}</b><small>${s2.ramase === 1 ? "zi disponibilă" : "zile disponibile"} în ${AN_AZI + 1}</small></div>`;
+}
+
+function donut(s) {
+  const r = 48, C = 2 * Math.PI * r, tot = Math.max(s.total, s.folosite + s.plan, 1);
+  const seg = (val, start, cul) => val <= 0 ? "" :
+    `<circle r="${r}" cx="60" cy="60" fill="none" stroke="${cul}" stroke-width="14" stroke-linecap="butt"
+      stroke-dasharray="${C * val / tot} ${C}" stroke-dashoffset="${-C * start / tot}" transform="rotate(-90 60 60)"/>`;
+  return `<svg viewBox="0 0 120 120" width="120" height="120">
+    <circle r="${r}" cx="60" cy="60" fill="none" stroke="#EEF0FF" stroke-width="14"/>
+    ${seg(s.folosite, 0, "#94D3CC")}${seg(s.plan, s.folosite, "#14B8A6")}
+    ${seg(Math.max(0, s.ramase), s.folosite + s.plan, "#FF7A59")}
+    <text x="60" y="64" text-anchor="middle" class="centru" ${s.ramase < 0 ? 'style="fill:#F43F5E"' : ""}>${s.ramase}</text>
+    <text x="60" y="80" text-anchor="middle" class="sub">ZILE RĂMASE</text></svg>`;
+}
+
+function perioadePlanificate() {
+  const k = Object.keys(date.zile).filter(x => x > K_AZI).sort();
+  const grupuri = [];
+  for (const x of k) {
+    const d = dinCheie(x), g = grupuri[grupuri.length - 1];
+    if (g) {   // aceeași perioadă dacă între ele sunt doar zile libere
+      let p = adauga(g.e, 1); while (p < d && liber(p)) p = adauga(p, 1);
+      if (cheie(p) === x) { g.e = d; g.n++; continue; }
+    }
+    grupuri.push({ s: d, e: d, n: 1 });
+  }
+  return grupuri.map(g => {
+    let s = g.s, e = g.e;
+    while (liber(adauga(s, -1))) s = adauga(s, -1);
+    while (liber(adauga(e, 1))) e = adauga(e, 1);
+    const total = Math.round((e - s) / ZI_MS) + 1;
+    return `<div class="perioada"><b>${g.n === 1 ? fmtLung(g.s) : `${fmtLung(g.s)} – ${fmtLung(g.e)}`}</b>
+      <small>${g.s.getUTCFullYear()} · ${zile(g.n)} de concediu → ${total === 1 ? "1 zi liberă" : `${total} zile libere`}</small>
+      ${s < g.s || e > g.e ? `<small>Liber: ${fmtLung(s)} – ${fmtLung(e)}</small>` : ""}</div>`;
+  }).join("");
+}
+
+// micșorează fontul rândurilor care nu încap pe o linie (fără să taie textul)
+function potrivesteRanduri() {
+  document.querySelectorAll(".perioada b, .perioada small").forEach(el => {
+    el.style.fontSize = "";
+    let f = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > el.clientWidth && f > 9) { f -= 0.5; el.style.fontSize = f + "px"; }
+  });
+}
+
+function deseneazaSold() {
+  let html = "";
+  for (const a of [AN_AZI, AN_AZI + 1]) {
+    const s = sold(a), c = date.ani[a];
+    html += `<div class="card">
+      <div class="rand"><h2>${a}</h2><span class="badge ${a > AN_AZI ? "viitor" : ""}">${a === AN_AZI ? "anul curent" : "anul următor"}</span></div>
+      <div class="donut">${donut(s)}
+        <div class="leg">
+          <span><i style="background:#FF7A59"></i>Disponibile<b>${s.total}</b></span>
+          <span><i style="background:#94D3CC"></i>Luate<b>${s.folosite}</b></span>
+          <span><i style="background:#14B8A6"></i>Planificate<b>${s.plan}</b></span>
+        </div></div>
+      <div class="setare"><div>Zile alocate<small>conform contractului</small></div>
+        <div class="stepper"><button data-an="${a}" data-camp="alocate" data-d="-1">−</button><b>${c.alocate}</b><button data-an="${a}" data-camp="alocate" data-d="1">+</button></div></div>
+      <div class="setare"><div>Luate deja<small>zile luate, nemarcate în calendar</small></div>
+        <div class="stepper"><button data-an="${a}" data-camp="luateInainte" data-d="-1">−</button><b>${c.luateInainte}</b><button data-an="${a}" data-camp="luateInainte" data-d="1">+</button></div></div>
+      <div class="setare"><div>Report din ${a - 1}<small>${c.report ? (s.report ? `+${zile(s.report)} rămase neluate` : "nicio zi de reportat") : "dezactivat"}</small></div>
+        <button class="comutator ${c.report ? "on" : ""}" data-report="${a}" aria-label="Report"></button></div>
+      ${s.ramase < 0 ? `<div class="nota" style="color:#F43F5E;font-weight:700">⚠ Ai planificat cu ${zile(-s.ramase)} mai mult decât ai disponibil.</div>` : ""}
+    </div>`;
+  }
+  const per = perioadePlanificate();
+  html += `<div class="card"><div class="eticheta" style="margin-bottom:6px">Concedii planificate</div>
+    ${per || `<div class="gol-frumos"><div class="ico-mare">🏝️</div><b>Nimic planificat încă</b>
+      <p>Alege o idee sau marchează zilele în calendar.</p>
+      <div class="chipuri"><button class="chip activ" data-mergi="idei">🌴 Vezi idei</button>
+      <button class="chip" data-mergi="cal">📅 Calendar</button></div></div>`}</div>
+    <div class="card"><div class="nota justificat" style="margin:0">ℹ️ Minimul legal în România este de 20 de zile lucrătoare pe an (Codul muncii, art. 145).
+    Zilele neluate se pot efectua în următoarele 18 luni (art. 146), de aceea se pot reporta în anul următor.
+    Zilele de concediu se numără doar în zile lucrătoare: weekendurile și sărbătorile legale nu se scad.</div></div>`;
+  $("tab-sold").innerHTML = html;
+  potrivesteRanduri();
+}
+
+function deseneazaCalendar() {
+  $("titluLuna").textContent = `${LUNI[luna - 1]} ${an}`;
+  const g = $("grila"); g.innerHTML = "";
+  ["Lu", "Ma", "Mi", "Jo", "Vi", "Sâ", "Du"].forEach(n => { const h = document.createElement("div"); h.className = "cap"; h.textContent = n; g.appendChild(h); });
+  const prima = D(an, luna, 1), nrZile = new Date(Date.UTC(an, luna, 0)).getUTCDate();
+  for (let i = 0; i < (prima.getUTCDay() + 6) % 7; i++) { const e = document.createElement("div"); e.className = "zi goala"; g.appendChild(e); }
+  for (let z = 1; z <= nrZile; z++) {
+    const d = D(an, luna, z), k = cheie(d), el = document.createElement("div");
+    let cls = "zi";
+    if (numeSarb(k)) cls += " sarb"; else if (weekend(d)) cls += " we"; else if (date.zile[k]) cls += " co" + (k <= K_AZI ? " trecut" : "");
+    if (k === K_AZI) cls += " azi";
+    el.className = cls; el.textContent = z;
+    el.onclick = () => clickZi(d);
+    g.appendChild(el);
+  }
+  const lista = Object.entries(sarbatori(an)).filter(([k]) => +k.slice(5, 7) === luna).sort();
+  $("titluSarbLuna").textContent = `Sărbători legale în ${LUNI[luna - 1].toLowerCase()}`;
+  $("sarbLuna").innerHTML = lista.length ? lista.map(([k, n]) => {
+    const d = dinCheie(k);
+    return `<div>${n}<span>${fmt(d)}${weekend(d) ? " · weekend" : ""}</span></div>`;
+  }).join("") : `<div class="gol" style="border:0">Nicio sărbătoare legală luna aceasta.</div>`;
+}
+
+function clickZi(d) {
+  const k = cheie(d), text = `${ZILE_LUNG[d.getUTCDay()]}, ${d.getUTCDate()} ${LUNI[d.getUTCMonth()].toLowerCase()} ${d.getUTCFullYear()}`;
+  const n = numeSarb(k);
+  if (n) { $("info").innerHTML = `🎉 <b>${text}</b> — sărbătoare legală: ${n}`; return; }
+  if (weekend(d)) { $("info").innerHTML = `😎 <b>${text}</b> — weekend, nu se scade din concediu`; return; }
+  const a = d.getUTCFullYear();
+  if (!date.ani[a]) date.ani[a] = { alocate: 21, luateInainte: 0, report: true };
+  if (date.zile[k]) delete date.zile[k]; else date.zile[k] = "co";
+  salveaza();
+  const s = sold(a);
+  $("info").innerHTML = date.zile[k]
+    ? `🏖️ <b>${text}</b> — zi de concediu. Mai ai <b>${s.ramase}</b> ${s.ramase === 1 ? "zi" : "zile"} în ${a}.`
+    : `<b>${text}</b> — zi lucrătoare. Mai ai <b>${s.ramase}</b> ${s.ramase === 1 ? "zi" : "zile"} în ${a}.`;
+  if (s.ramase < 0) toast(`⚠ Depășești zilele disponibile în ${a} cu ${zile(-s.ramase)}`);
+  deseneaza();
+}
+
+function deseneazaIdei() {
+  $("chipuriIdei").innerHTML = [AN_AZI, AN_AZI + 1].map(a => `<button class="chip ${a === anIdei ? "activ" : ""}" data-an-idei="${a}">${a}</button>`).join("");
+  const s = sold(anIdei), lista = idei(anIdei);
+  $("notaIdei").innerHTML = `Ai <b>${s.ramase}</b> ${s.ramase === 1 ? "zi disponibilă" : "zile disponibile"} în ${anIdei}. ` +
+    `Ideile de mai jos leagă sărbătorile legale de weekend, ca să obții cât mai multe zile libere cu cât mai puține zile de concediu.`;
+  if (!lista.length) { $("listaIdei").innerHTML = `<div class="card gol">Nu mai sunt sărbători legale în ${anIdei}. Încearcă anul următor.</div>`; return; }
+  $("listaIdei").innerHTML = lista.map((v, i) => {
+    const plan = v.co.length && v.co.every(k => date.zile[k]);
+    let banda = "";
+    for (let d = v.s; d <= v.e; d = adauga(d, 1)) {
+      const k = cheie(d), cls = v.co.includes(k) ? "b-co" : numeSarb(k) ? "b-sarb" : "b-we";
+      banda += `<div class="${cls}">${ZS[d.getUTCDay()]}<br>${d.getUTCDate()}</div>`;
+    }
+    const raport = v.co.length ? ` · ×${(v.total / v.co.length).toFixed(1).replace(".0", "")}` : "";
+    return `<div class="idee ${v.co.length ? "" : "zero"} ${plan ? "planificat" : ""}">
+      <div class="rand"><div><div class="idee-titlu">${v.nume.join(" + ")}</div>
+        <div class="idee-per">${fmt(v.s)} – ${fmt(v.e)} ${v.e.getUTCFullYear()}${raport}</div></div>
+        <div class="castig"><b>${v.total}</b><small>zile libere</small></div></div>
+      <div class="banda">${banda}</div>
+      <div class="idee-jos">${v.co.length
+        ? `<span>Iei <b>${zile(v.co.length)}</b>: ${listaZile(v.co)}</span>
+           <button data-idee="${i}">${plan ? "✓ Planificat" : "+ Planifică"}</button>`
+        : `<span>🎉 Fără zile de concediu — weekend prelungit</span>`}</div>
+    </div>`;
+  }).join("");
+  $("listaIdei").querySelectorAll("[data-idee]").forEach(b => b.onclick = () => {
+    const v = lista[+b.dataset.idee], plan = v.co.every(k => date.zile[k]);
+    for (const k of v.co) { if (plan) delete date.zile[k]; else date.zile[k] = "co"; }
+    for (const k of v.co) { const a = +k.slice(0, 4); if (!date.ani[a]) date.ani[a] = { alocate: 21, luateInainte: 0, report: true }; }
+    salveaza();
+    const a = +v.co[0].slice(0, 4), s2 = sold(a);
+    toast(plan ? "Planificare anulată" : s2.ramase < 0 ? `⚠ Planificat, dar depășești zilele din ${a} cu ${zile(-s2.ramase)}` : `🏖️ Planificat! Mai ai ${zile(s2.ramase)} în ${a}`);
+    deseneaza();
+  });
+}
+
+function deseneaza() {
+  deseneazaAntet();
+  if (tab === "sold") deseneazaSold();
+  if (tab === "cal") deseneazaCalendar();
+  if (tab === "idei") deseneazaIdei();
+}
+
+function arataTab(t) {
+  tab = t;
+  for (const id of ["sold", "cal", "idei"]) $("tab-" + id).hidden = id !== t;
+  document.querySelectorAll(".tabbar button").forEach(b => b.classList.toggle("activ", b.dataset.tab === t));
+  window.scrollTo(0, 0);
+  deseneaza();
+}
+
+// ---------- alegere lună / an
+function deschidePicker() { anPicker = an; deseneazaPicker(); $("picker").hidden = false; }
+function inchidePicker() { $("picker").hidden = true; }
+function deseneazaPicker() {
+  $("pickAn").textContent = anPicker;
+  $("pickLuni").innerHTML = LUNI.map((n, i) => {
+    const m = i + 1, nr = Object.keys(date.zile).filter(k => +k.slice(0, 4) === anPicker && +k.slice(5, 7) === m).length;
+    const cls = (anPicker === an && m === luna ? "sel " : "") + (anPicker === AN_AZI && m === AZI.getUTCMonth() + 1 ? "curenta" : "");
+    return `<button class="${cls}" data-luna="${m}">${n.slice(0, 3)}${nr ? `<em>${nr}</em>` : ""}</button>`;
+  }).join("");
+}
+function mergiLa(a, l) { an = a; luna = l; inchidePicker(); arataTab("cal"); }
+function mergiAzi() { mergiLa(AN_AZI, AZI.getUTCMonth() + 1); }
+function mutaLuna(d) { luna += d; if (luna < 1) { luna = 12; an--; } else if (luna > 12) { luna = 1; an++; } deseneaza(); }
+
+$("btnAn").onclick = deschidePicker;
+$("titluLuna").onclick = deschidePicker;
+$("pickInapoi").onclick = () => { anPicker--; deseneazaPicker(); };
+$("pickInainte").onclick = () => { anPicker++; deseneazaPicker(); };
+$("pickLuni").onclick = e => { const b = e.target.closest("[data-luna]"); if (b) mergiLa(anPicker, +b.dataset.luna); };
+$("pickAzi").onclick = mergiAzi;
+$("picker").onclick = e => { if (e.target === $("picker")) inchidePicker(); };
+$("btnAzi").onclick = mergiAzi;
+$("lunaInapoi").onclick = () => mutaLuna(-1);
+$("lunaInainte").onclick = () => mutaLuna(1);
+document.querySelectorAll(".tabbar button").forEach(b => b.onclick = () => arataTab(b.dataset.tab));
+
+$("tab-sold").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.mergi) return arataTab(b.dataset.mergi);
+  if (b.dataset.camp) {
+    const c = date.ani[b.dataset.an];
+    c[b.dataset.camp] = Math.max(0, Math.min(60, c[b.dataset.camp] + +b.dataset.d));
+  } else if (b.dataset.report) {
+    const c = date.ani[b.dataset.report]; c.report = !c.report;
+  } else return;
+  salveaza(); deseneaza();
+};
+$("chipuriIdei").onclick = e => { const b = e.target.closest("[data-an-idei]"); if (b) { anIdei = +b.dataset.anIdei; deseneazaIdei(); } };
+
+// glisare pe calendar
+let x0 = null;
+$("grila").addEventListener("touchstart", e => { x0 = e.touches[0].clientX; }, { passive: true });
+$("grila").addEventListener("touchend", e => {
+  if (x0 === null) return;
+  const dx = e.changedTouches[0].clientX - x0; x0 = null;
+  if (Math.abs(dx) > 60) mutaLuna(dx < 0 ? 1 : -1);
+});
+
+// butonul „înapoi” de pe Android (apelat din aplicația nativă)
+window.inapoi = () => {
+  if (!$("picker").hidden) { inchidePicker(); return true; }
+  if (tab !== "sold") { arataTab("sold"); return true; }
+  return false;
+};
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") salveaza(); });
+window.addEventListener("pagehide", salveaza);
+window.addEventListener("resize", potrivesteRanduri);
+// fără zoom cu degetele (Safari pe iPhone ignoră user-scalable=no)
+for (const ev of ["gesturestart", "gesturechange"]) document.addEventListener(ev, e => e.preventDefault());
+document.addEventListener("touchmove", e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+
+salveaza();
+deseneaza();
+</script>
+</body>
+</html>
