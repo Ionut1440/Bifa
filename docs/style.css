@@ -321,7 +321,18 @@ button.chip { cursor: pointer; }
 .sfield input::-webkit-search-decoration { -webkit-appearance: none; }
 .scancel { max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap; color: var(--accent); font-size: 16px; font-weight: 500; margin-left: 0;
   transition: max-width .34s cubic-bezier(.2,.9,.3,1), opacity .25s ease, margin .34s cubic-bezier(.2,.9,.3,1); }
-#app.searching .hrow { max-height: 0; opacity: 0; transform: translateY(-16px); }
+body.searching #fixhead .hrow { max-height: 0; opacity: 0; transform: translateY(-16px); }
+body.searching #fixhead { padding-bottom: 0; }
+/* the fixed top of each screen: frosted glass, the page scrolls underneath */
+#fixhead { position: fixed; top: 0; left: 0; right: 0; z-index: 9; max-width: 680px; margin: 0 auto; display: none;
+  padding: var(--toppad) 16px 4px; touch-action: none;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); }
+#fixhead.on { display: block; }
+#fixhead::after { content: ""; position: absolute; left: 0; right: 0; bottom: -14px; height: 14px; pointer-events: none;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 60%, transparent), transparent); }
+#fixhead h1 { margin-bottom: 8px; }
+#fixhead .hrow h1 { margin: 2px 0 6px; }
 #app.searching .sfield { background: rgba(118,118,128,.17); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
 #app.searching .scancel { max-width: 110px; opacity: 1; margin-left: 12px; }
 #app.searching .screen-body { display: none; }
@@ -346,6 +357,36 @@ button.chip { cursor: pointer; }
 .sl-txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sl-x { width: 36px; height: 36px; color: var(--muted); font-size: 14px; }
 .searchlayer .catrow + .catrow::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; border-top: .5px solid var(--line); }
+
+/* ---------- liquid glass bubble while dragging (bottom bar + segmented buttons) ----------
+   the bubble lifts above the icons as a clear lens: blur + saturation + bright rim + specular highlight */
+#tabbar { overflow: hidden; }
+#tabbar .tbadge { top: 1px; }
+#tabbar .pill, .segpill { transition-property: transform, width, top, bottom, scale, background, box-shadow; }
+#tabbar.dragging .pill {
+  z-index: 2; top: 3px; bottom: 3px;
+  background: linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,.12));
+  backdrop-filter: blur(1.5px) saturate(190%) brightness(1.12) contrast(1.05);
+  -webkit-backdrop-filter: blur(1.5px) saturate(190%) brightness(1.12) contrast(1.05);
+  border: .5px solid rgba(255,255,255,.85);
+  box-shadow: inset 0 1.5px 1px rgba(255,255,255,.95), inset 0 -2px 4px rgba(124,92,250,.18), 0 8px 22px rgba(60,40,140,.22);
+}
+#tabbar.dragging .pill::after, .seg.dragging .segpill::after, .segin.dragging .segpill::after {
+  content: ""; position: absolute; left: 12%; right: 12%; top: 2px; height: 38%; border-radius: 999px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.75), rgba(255,255,255,0));
+}
+.seg, .segin { overflow: hidden; }
+.seg.dragging .segpill, .segin.dragging .segpill {
+  z-index: 2; background: linear-gradient(180deg, rgba(255,255,255,.4), rgba(255,255,255,.14));
+  backdrop-filter: blur(1px) saturate(190%) brightness(1.1); -webkit-backdrop-filter: blur(1px) saturate(190%) brightness(1.1);
+  border: .5px solid rgba(255,255,255,.85);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.95), 0 4px 14px rgba(0,0,0,.16);
+}
+@media (prefers-color-scheme: dark) {
+  #tabbar.dragging .pill, .seg.dragging .segpill, .segin.dragging .segpill {
+    background: linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,.05)); border-color: rgba(255,255,255,.35);
+  }
+}
 
 /* magnifier while sliding a finger along the bar / segments: follow the finger quickly,
    spring back to normal size when you let go */

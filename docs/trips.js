@@ -335,7 +335,7 @@ function tripProgramHtml(e) {
     <div class="sec-title" style="margin-top:28px">💡 Idei · de programat</div>
     <div class="quickadd" style="--c:var(--accent)">
       <button class="qa-plus" data-act="tr-idea-add" aria-label="Adaugă">${ICON.plus}</button>
-      <input id="tr-idea" type="text" placeholder="Restaurant, cafenea, muzeu… (ex: Cafe Central)" autocomplete="off" enterkeyhint="done">
+      <input id="tr-idea" type="text" placeholder="Scrie și Enter, sau + pentru detalii" autocomplete="off" enterkeyhint="done">
     </div>
     <div class="quick wrap" style="--pink:var(--accent);padding:8px 0 0">${['restaurant', 'cafe', 'museum', 'sight', 'bar', 'beach', 'shop'].map(k => `<button data-act="tr-idea-type" data-v="${k}" class="${(ui.trip.ideaType || 'restaurant') === k ? 'on' : ''}">${TT[k].icon} ${TT[k].label}</button>`).join('')}</div>
     ${ideasHtml || '<div class="footnote">Notează aici locurile pe care vrei să le încerci; apoi le pui pe o zi și o oră.</div>'}`;
@@ -672,7 +672,15 @@ function tripClick(act, el) {
     case 'tr-file-open': openTripFile(el.dataset.fid); break;
     case 'tr-file-del': s.d.files = (s.d.files || []).filter(f => f.id !== el.dataset.fid); fileDel(el.dataset.fid).catch(() => {}); renderSheet(); break;
     case 'tr-idea-type': ui.trip.ideaType = el.dataset.v; render(); document.getElementById('tr-idea')?.focus(); break;
-    case 'tr-idea-add': addIdea(); break;
+    case 'tr-idea-add': {
+      // Enter = quick add; the + opens the full form (address, notes, cost, day…) prefilled with the name and type
+      const inp = document.getElementById('tr-idea');
+      const title = (inp?.value || '').trim();
+      if (inp) { inp.value = ''; inp.blur(); }
+      openTripItem(cur.id, null, '', ui.trip.ideaType || 'restaurant');
+      if (title) { ui.sheet.d.title = title; renderSheet(); }
+      break;
+    }
     case 'tr-pack-add': addPack(document.getElementById('tr-pack')?.value); break;
     case 'tr-pack-sugg': addPack(el.dataset.v); break;
     case 'tr-pack-toggle': { const p = (cur.trip.packing || []).find(x => x.id === el.dataset.pid); if (p) { p.done = !p.done; save(); render(); } break; }

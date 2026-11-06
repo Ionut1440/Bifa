@@ -913,11 +913,35 @@ function render() {
   else ui.searching = false;
   app.innerHTML = html;
   app.classList.toggle('searching', !!(isMain && ui.searching));
+  document.body.classList.toggle('searching', !!(isMain && ui.searching));
+  pinHeader(app);
   openSwipeEl = null;
   scroller().scrollTo(0, ui.searching ? 0 : y);
   renderTabbar();
   initSegs(app);
   if (typeof tripAfterRender === 'function') tripAfterRender();
+}
+
+// ---------- the top of every screen stays put (title, date, + / ‹ back, title, buttons) ----------
+// The header is moved into #fixhead (fixed, frosted glass); the page scrolls (and bounces) underneath it.
+let fixObs = null;
+function pinHeader(app) {
+  const fh = document.getElementById('fixhead');
+  fh.innerHTML = '';
+  const parts = [];
+  if (!document.body.classList.contains('inapp')) {
+    const hrow = app.querySelector('.mainhead .hrow');
+    if (hrow) parts.push(hrow);
+    else {
+      const tb = app.querySelector(':scope > .topbar');
+      if (tb) { parts.push(tb); const h1 = tb.nextElementSibling; if (h1 && h1.tagName === 'H1') parts.push(h1); }
+    }
+  }
+  parts.forEach(p => fh.appendChild(p));
+  fh.classList.toggle('on', parts.length > 0);
+  const fit = () => { app.style.paddingTop = fh.classList.contains('on') ? fh.offsetHeight + 'px' : ''; };
+  fit();
+  if (!fixObs && window.ResizeObserver) { fixObs = new ResizeObserver(fit); fixObs.observe(fh); }
 }
 
 // ---------- main header: title + "+" on one row, full-width search bar below (like WhatsApp) ----------
@@ -999,6 +1023,7 @@ function enterSearch() {
   ui.searching = true;
   scroller().scrollTo(0, 0);
   document.getElementById('app').classList.add('searching');
+  document.body.classList.add('searching');
   updateSearchLayer();
 }
 function exitSearch() {
@@ -1009,6 +1034,7 @@ function exitSearch() {
   const inp = document.getElementById('gsearch');
   if (inp) { inp.value = ''; inp.blur(); }
   app.classList.remove('searching');
+  document.body.classList.remove('searching');
   const body = app.querySelector('.screen-body');
   if (body) { body.classList.remove('fadein'); void body.offsetWidth; body.classList.add('fadein'); }
   document.getElementById('tabbar')?.classList.remove('compact');
@@ -1092,7 +1118,7 @@ document.addEventListener('pointerdown', ev => {
   bar.classList.remove('compact');
   placePill(tabDrag.over, ev.clientX);
   markOver(tabDrag.over);
-  magnify([...bar.querySelectorAll('button[data-tab]')], ev.clientX, 1.28, 1.25);
+  magnify([...bar.querySelectorAll('button[data-tab]')], ev.clientX, 1.16, 1.2);
 });
 function markOver(btn) {
   document.querySelectorAll('#tabbar button[data-tab]').forEach(b => b.classList.toggle('over', b === btn));
@@ -1105,10 +1131,22 @@ function magnify(buttons, x, maxScale, reach) {
     const dist = Math.abs(x - (r.left + r.width / 2));
     const k = Math.max(0, 1 - dist / (r.width * reach));
     const s = 1 + (maxScale - 1) * k * k * (3 - 2 * k);   // smooth curve
-    b.style.transform = s > 1.001 ? `scale(${s.toFixed(3)}) translateY(${(-(s - 1) * 14).toFixed(1)}px)` : '';
+    b.style.transform = s > 1.001 ? `scale(${s.toFixed(3)})` : '';   // grows in place, stays inside the capsule
   });
 }
 function unmagnify(buttons) { buttons.forEach(b => { b.style.transform = ''; }); }
+// liquid glass: while you drag, the bubble stretches with the finger's speed and settles when it slows down
+function stretchPill(pill, drag, x) {
+  if (!pill) return;
+  const now = performance.now();
+  const dt = Math.max(16, now - (drag.t || now));
+  const v = drag.lx === undefined ? 0 : (x - drag.lx) / dt;
+  drag.t = now; drag.lx = x;
+  const s = 1 + Math.min(0.3, Math.abs(v) * 0.4);
+  pill.style.scale = `${s.toFixed(3)} ${(1 - (s - 1) * 0.35).toFixed(3)}`;
+  clearTimeout(pill._settle);
+  pill._settle = setTimeout(() => { pill.style.scale = ''; }, 110);
+}
 document.addEventListener('pointermove', ev => {
   if (!tabDrag || ev.pointerId !== tabDrag.id) return;
   if (Math.abs(ev.clientX - tabDrag.startX) > 6) tabDrag.moved = true;
@@ -1116,7 +1154,8 @@ document.addEventListener('pointermove', ev => {
   if (over !== tabDrag.over) { tabDrag.over = over; try { navigator.vibrate?.(6); } catch (e) { /* ignore */ } }
   markOver(over);
   placePill(over, ev.clientX);
-  magnify([...document.querySelectorAll('#tabbar button[data-tab]')], ev.clientX, 1.28, 1.25);
+  stretchPill(document.querySelector('#tabbar .pill'), tabDrag, ev.clientX);
+  magnify([...document.querySelectorAll('#tabbar button[data-tab]')], ev.clientX, 1.16, 1.2);
 });
 function endTabDrag(ev) {
   if (!tabDrag || (ev && ev.pointerId !== tabDrag.id)) return;
@@ -3351,12 +3390,12 @@ document.addEventListener('pointermove', ev => {
     || (ev.clientX < sr.left + sr.width / 2 ? btns[0] : btns[btns.length - 1]);
   if (over !== segDrag.over) { segDrag.over = over; try { navigator.vibrate?.(6); } catch (e) { /* ignore */ } }
   btns.forEach(b => b.classList.toggle('over', b === over));
-  magnify(btns, ev.clientX, 1.12, 1.1);
+  magnify(btns, ev.clientX, 1.07, 1.1);
   const w = over.offsetWidth;
   const left = Math.max(2, Math.min(seg.offsetWidth - w - 2, ev.clientX - sr.left - w / 2));
   segDrag.left = left; segDrag.width = w;
   const pill = seg.querySelector(':scope > .segpill');
-  if (pill) setSegPill(pill, { left, width: w });
+  if (pill) { setSegPill(pill, { left, width: w }); stretchPill(pill, segDrag, ev.clientX); }
 });
 function endSegDrag(ev) {
   if (!segDrag || (ev && ev.pointerId !== segDrag.id)) return;
