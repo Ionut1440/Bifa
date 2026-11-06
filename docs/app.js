@@ -70,7 +70,7 @@ const CURRENCIES = ['RON', 'EUR', 'USD', 'GBP'];
 const REPEATS = { none: 'Niciodată', daily: 'Zilnic', weekly: 'Săptămânal', monthly: 'Lunar', yearly: 'Anual' };
 const PRIORITIES = ['Normal', 'Important', 'Urgent'];
 const REM_MODES = { off: 'Fără remindere', optional: 'Opțional, la fiecare element', always: 'Fiecare element e un reminder' };
-const GROUP_MODES = { date: 'După dată', group: 'După grup', none: 'Fără grupare' };
+const GROUP_MODES = { date: 'După dată', group: 'După grup', none: 'Ordinea mea' };
 const TEMPLATES = {
   task: { label: 'De făcut', icon: '✅', color: 0 },
   order: { label: 'Comenzi', icon: '📦', color: 1 },
@@ -204,9 +204,18 @@ function sectionsByGroup(list) {
   const g = {};
   for (const e of list) (g[e.group || ''] ||= []).push(e);
   return Object.keys(g).sort((a, b) => (!a) - (!b) || a.localeCompare(b, 'ro'))
-    .map(k => ({ id: 'g' + k, title: k || 'Fără grup', items: sortEntries(g[k]) }));
+    .map(k => ({ id: 'g' + k, title: k || 'Fără grup', items: sortManual(g[k]) }));
 }
-const sectionsFlat = list => (list.length ? [{ id: 'all', title: '', items: sortEntries(list) }] : []);
+const sectionsFlat = list => (list.length ? [{ id: 'all', title: '', items: sortManual(list) }] : []);
+// manual order (set by long-press + drag). Items never moved go on top, newest first.
+function sortManual(list) {
+  if (!list.some(e => typeof e.pos === 'number')) return sortEntries(list);
+  const key = e => (typeof e.pos === 'number' ? e.pos : -e.createdAt);
+  return [...list].sort((a, b) => {
+    if (settledDone(a) !== settledDone(b)) return settledDone(a) ? 1 : -1;
+    return key(a) - key(b);
+  });
+}
 
 function toggleDone(e) {
   e.done = !e.done;
@@ -254,7 +263,7 @@ function undoDone(id) {
   toast('Anulat ↩︎');
 }
 function askThenToggle(e) {
-  if (!e.done && db.settings?.confirmCheck) {
+  if (false) { // confirmation setting removed at the user's request (the "Anulează" bar is enough)
     const c = catById(e.cat);
     openActions(`Bifezi „${e.title}” ca ${(c?.doneLabel || 'bifat').toLowerCase()}?`, [
       { label: '✓ Da, bifează', run: () => { toggleDone(e); render(); } },
@@ -359,6 +368,7 @@ const ui = {
   search: '',
   reorder: false,
   sheet: null,      // { type: 'entry'|'category'|'actions', ... }
+  stats: { view: 'general', range: '12', metric: 'spent', act: 'done', sel: '' },
 };
 
 const ICON = {
@@ -374,6 +384,7 @@ const ICON = {
   up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
   grip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></svg>',
   chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>',
@@ -382,7 +393,8 @@ const ICON = {
 
 // ---------- rendering: shared pieces ----------
 const APP_NAME = 'MindMe';
-const brand = () => `<div class="brand"><img src="icons/icon-192.png" alt=""><span>${APP_NAME}</span></div>`;
+// top-left of the main screens: search button (the user didn't want the logo + name there)
+const brand = () => `<button class="iconbtn" data-act="search-open" aria-label="Caută">${ICON.search}</button>`;
 const chip = (text, color, act) => act
   ? `<button class="chip" style="--cc:${color}" ${act}>${esc(text)}</button>`
   : `<span class="chip" style="--cc:${color}">${esc(text)}</span>`;
@@ -436,7 +448,7 @@ function rowHtml(e, opts = {}) {
       <div class="subrow ${s.done ? 'on' : ''}"><button class="subcheck ${s.done ? 'on' : ''}" style="--c:${col}" data-act="sub" data-id="${e.id}" data-sid="${s.id}">${ICON.check}</button><span>${esc(s.title)}</span></div>`).join('')}
       ${subs.length > 8 ? `<div class="footnote" style="margin:0">+ încă ${subs.length - 8}</div>` : ''}</div>` : '';
 
-  return `<div class="swipe" data-swipe="entry" data-id="${e.id}"><button class="swipe-del" data-act="swipe-del" data-kind="entry" data-id="${e.id}">${ICON.trash}<span>Șterge</span></button>
+  return `<div class="swipe" data-swipe="entry" data-id="${e.id}" ${opts.reorder ? 'data-reorder="entry"' : ''}><button class="swipe-del" data-act="swipe-del" data-kind="entry" data-id="${e.id}">${ICON.trash}<span>Șterge</span></button>
   <div class="row swipe-content ${e.done ? 'done' : ''}" data-act="open" data-id="${e.id}">
     <button class="check ${e.done ? 'on' : ''}" style="--c:${col}" data-act="toggle" data-id="${e.id}" aria-label="Bifează">${ICON.check}</button>
     <div class="rbody">
@@ -503,7 +515,7 @@ function screenLists() {
       : `${active.length ? `<span class="badge" style="--c:${colorOf(c)}">${active.length}</span>` : ''}
          <button class="gear" data-act="cat-rules" data-id="${c.id}" aria-label="Reguli">${ICON.gear}</button>
          <span class="chev">${ICON.chev}</span>`;
-    return `<div class="swipe" ${ui.reorder ? '' : 'data-swipe="cat"'} data-id="${c.id}"><button class="swipe-del" data-act="swipe-del" data-kind="cat" data-id="${c.id}">${ICON.trash}<span>Șterge</span></button>
+    return `<div class="swipe" ${ui.reorder ? '' : 'data-swipe="cat" data-reorder="cat"'} data-id="${c.id}"><button class="swipe-del" data-act="swipe-del" data-kind="cat" data-id="${c.id}">${ICON.trash}<span>Șterge</span></button>
     <button class="swipe-set" data-act="swipe-set" data-id="${c.id}">${ICON.gear}<span>Setări</span></button>
     <div class="catrow swipe-content" data-act="${ui.reorder ? '' : 'open-cat'}" data-id="${c.id}">
       <div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
@@ -513,19 +525,11 @@ function screenLists() {
   }).join('');
   return `
     <div class="topbar"><div class="left">${brand()}</div>
-      <div class="right"><button class="back" data-act="reorder" style="padding:6px 8px">${ui.reorder ? 'Gata' : 'Ordine'}</button>
-      <button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button></div></div>
+      <div class="right"><button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button></div></div>
     <h1>Liste</h1>
-    ${moneyCard()}
     <div class="group">${rows || '<div class="empty">Nicio listă.</div>'}</div>
     <div class="group mt"><button class="linkrow" data-act="cat-new">${ICON.plus} Listă nouă</button></div>
-    <div class="footnote">Fiecare listă are regulile ei (sumă, termen, produse, remindere…). Apasă pe <span style="display:inline-block;width:16px;vertical-align:-3px">${ICON.gear}</span> ca să le schimbi.</div>
-    <div class="sec-title">Setări</div>
-    <div class="group"><div class="catrow" data-act="set-confirm" style="cursor:pointer">
-      <div style="flex:1"><div class="catname" style="font-weight:500">Cere confirmare la bifare</div>
-      <div class="catsub">Oricum, după ce bifezi ai câteva secunde să apeși „Anulează”.</div></div>
-      <label class="sw" style="pointer-events:none"><input type="checkbox" ${db.settings?.confirmCheck ? 'checked' : ''}><span></span></label>
-    </div></div>
+    <div class="footnote">Ține apăsat pe o listă și trage-o ca s-o muți. Glisează spre stânga pentru setări, spre dreapta pentru ștergere.</div>
     <div class="sec-title">Backup</div>
     <div class="group">
       <button class="linkrow" data-act="export">${ICON.download} Salvează o copie (backup)</button>
@@ -573,7 +577,7 @@ function categoryListHtml(c) {
       ${ui.search ? `Niciun rezultat pentru „${esc(ui.search)}”.` : 'Apasă + ca să adaugi ceva.'}
       ${!ui.search && ui.filter !== 'done' ? `<div class="mt"><button class="btn" style="background:${colorOf(c)}" data-act="new" data-id="${c.id}">Adaugă</button></div>` : ''}</div>`;
   }
-  return sectionsHtml(sections, { showGroup: c.groupMode !== 'group' });
+  return sectionsHtml(sections, { showGroup: c.groupMode !== 'group', reorder: true });
 }
 function screenCategory(c) {
   const all = db.entries.filter(e => e.cat === c.id);
@@ -628,18 +632,89 @@ function render() {
   if (ui.tab === 'lists' && ui.catId && catById(ui.catId)) html = screenCategory(catById(ui.catId));
   else if (ui.tab === 'lists') { ui.catId = null; html = screenLists(); }
   else if (ui.tab === 'reminders') html = screenReminders();
+  else if (ui.tab === 'stats') html = screenStats();
   else html = screenToday();
   app.innerHTML = html;
   openSwipeEl = null;
   window.scrollTo(0, y);
   renderTabbar();
 }
+// Bottom bar like WhatsApp: a "bubble" sits behind the selected tab and slides;
+// drag your finger along the bar and the bubble follows, let go to open that tab.
+const TABS = [['today', 'Azi', 'sun'], ['lists', 'Liste', 'grid'], ['reminders', 'Remindere', 'bell'], ['stats', 'Statistici', 'chart']];
 function renderTabbar() {
+  const bar = document.getElementById('tabbar');
   const badge = db.entries.filter(e => !e.done && catById(e.cat) && (isOverdue(e) || isDueToday(e) || reminderMissed(e))).length;
-  const t = (id, label, icon, b) => `<button class="${ui.tab === id ? 'on' : ''}" data-act="tab" data-tab="${id}">${icon}<span>${label}</span>${b ? `<span class="tbadge">${b}</span>` : ''}</button>`;
-  document.getElementById('tabbar').innerHTML = t('today', 'Azi', ICON.sun, badge) + t('lists', 'Liste', ICON.grid) + t('reminders', 'Remindere', ICON.bell);
+  if (!bar.querySelector('.pill')) {
+    bar.innerHTML = `<span class="pill"></span>` + TABS.map(([id, label, icon]) =>
+      `<button data-tab="${id}">${ICON[icon]}<span>${label}</span><span class="tbadge hidden"></span></button>`).join('');
+  }
+  bar.querySelectorAll('button[data-tab]').forEach(b => {
+    b.classList.toggle('on', b.dataset.tab === ui.tab);
+    const tb = b.querySelector('.tbadge');
+    const n = b.dataset.tab === 'today' ? badge : 0;
+    tb.textContent = n || '';
+    tb.classList.toggle('hidden', !n);
+  });
+  if (!tabDrag) placePill(bar.querySelector(`button[data-tab="${ui.tab}"]`));
   try { if (navigator.setAppBadge) badge ? navigator.setAppBadge(badge) : navigator.clearAppBadge(); } catch (e) { /* ignore */ }
 }
+function placePill(btn, x) {
+  const bar = document.getElementById('tabbar');
+  const pill = bar.querySelector('.pill');
+  if (!pill || !btn) return;
+  const br = bar.getBoundingClientRect(), r = btn.getBoundingClientRect();
+  const w = r.width - 8;
+  const left = x === undefined ? r.left - br.left + 4 : Math.max(4, Math.min(br.width - w - 4, x - br.left - w / 2));
+  pill.style.width = w + 'px';
+  pill.style.transform = `translateX(${left}px)`;
+}
+function switchTab(id) {
+  if (ui.tab === id && !ui.catId) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  ui.tab = id; ui.catId = null; ui.reorder = false; ui.search = '';
+  render();
+  window.scrollTo(0, 0);
+}
+let tabDrag = null;
+function tabAt(x) {
+  const btns = [...document.querySelectorAll('#tabbar button[data-tab]')];
+  return btns.find(b => { const r = b.getBoundingClientRect(); return x >= r.left && x < r.right; })
+    || (x < btns[0].getBoundingClientRect().left ? btns[0] : btns[btns.length - 1]);
+}
+document.addEventListener('pointerdown', ev => {
+  const bar = ev.target.closest('#tabbar');
+  if (!bar || ui.sheet) return;
+  ev.preventDefault();
+  tabDrag = { id: ev.pointerId, startX: ev.clientX, moved: false, over: tabAt(ev.clientX) };
+  try { bar.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+  bar.classList.add('dragging');
+  placePill(tabDrag.over, ev.clientX);
+  markOver(tabDrag.over);
+});
+function markOver(btn) {
+  document.querySelectorAll('#tabbar button[data-tab]').forEach(b => b.classList.toggle('over', b === btn));
+}
+document.addEventListener('pointermove', ev => {
+  if (!tabDrag || ev.pointerId !== tabDrag.id) return;
+  if (Math.abs(ev.clientX - tabDrag.startX) > 6) tabDrag.moved = true;
+  const over = tabAt(ev.clientX);
+  if (over !== tabDrag.over) { tabDrag.over = over; try { navigator.vibrate?.(6); } catch (e) { /* ignore */ } }
+  markOver(over);
+  placePill(over, ev.clientX);
+});
+function endTabDrag(ev) {
+  if (!tabDrag || (ev && ev.pointerId !== tabDrag.id)) return;
+  const target = tabDrag.over;
+  tabDrag = null;
+  const bar = document.getElementById('tabbar');
+  bar.classList.remove('dragging');
+  markOver(null);
+  if (ev && ev.type === 'pointercancel') { renderTabbar(); return; }
+  if (target) { placePill(target); switchTab(target.dataset.tab); }
+}
+document.addEventListener('pointerup', endTabDrag);
+document.addEventListener('pointercancel', endTabDrag);
+window.addEventListener('resize', () => { if (!tabDrag) placePill(document.querySelector(`#tabbar button[data-tab="${ui.tab}"]`)); });
 
 // ---------- entry editor ----------
 function newDraft(c) {
@@ -1053,6 +1128,188 @@ function statsHtml() {
   </div>`;
 }
 
+// ---------- search across all lists ----------
+const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function openSearch() {
+  ui.sheet = { type: 'search', q: '' };
+  renderSheet();
+  setTimeout(() => document.getElementById('gsearch')?.focus(), 280);
+}
+function searchResultsHtml(raw) {
+  const q = norm(raw).trim();
+  if (!q) return `<div class="empty"><div class="big">🔍</div><b>Caută în toate listele</b>Titluri, detalii, produse, magazine, persoane, AWB, grupuri, sume. Merge și fără diacritice.</div>`;
+  const listHits = cats().filter(c => norm(c.name).includes(q));
+  const hits = db.entries.filter(e => catById(e.cat) && [
+    e.title, e.details, e.vendor, e.group, e.tracking,
+    e.hasAmount && e.amount ? fNum.format(e.amount) + ' ' + e.amount : '',
+    ...(e.subs || []).map(s => s.title),
+  ].some(t => norm(t).includes(q)));
+  if (!hits.length && !listHits.length) return `<div class="empty"><div class="big">🤷</div><b>Nimic găsit</b>Nu am găsit nimic pentru „${esc(raw.trim())}”.</div>`;
+  let html = '';
+  if (listHits.length) {
+    html += `<div class="sec-title">Liste</div><div class="group">${listHits.map(c => `
+      <div class="catrow" data-act="search-cat" data-id="${c.id}"><div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
+      <div style="flex:1"><div class="catname">${esc(c.name)}</div></div><span class="chev">${ICON.chev}</span></div>`).join('')}</div>`;
+  }
+  for (const c of cats()) {
+    const items = hits.filter(e => e.cat === c.id);
+    if (!items.length) continue;
+    html += `<div class="sec-title">${c.icon} ${esc(c.name)} · ${items.length}</div>
+      <div class="group">${sortEntries(items).map(e => rowHtml(e, {})).join('')}</div>`;
+  }
+  return html;
+}
+function searchSheetHtml() {
+  const s = ui.sheet;
+  return `<div class="overlay"></div>
+  <div class="panel">
+    <div class="panel-head"><button data-act="sheet-close">Închide</button><div class="t">Caută</div><span style="min-width:70px"></span></div>
+    <div class="panel-body">
+      <input class="search" type="search" id="gsearch" placeholder="Ce cauți?" value="${esc(s.q)}" autocomplete="off" enterkeyhint="search" style="margin-top:0">
+      <div id="gresults">${searchResultsHtml(s.q)}</div>
+    </div>
+  </div>`;
+}
+function refreshSearch() {
+  const box = document.getElementById('gresults');
+  if (box && ui.sheet?.type === 'search') box.innerHTML = searchResultsHtml(ui.sheet.q);
+}
+
+// ---------- "Statistici" tab ----------
+function rangeOf(s, dates) {
+  const now = new Date();
+  let months = +s.range;
+  if (s.range === 'all') {
+    const first = dates.length ? Math.min(...dates) : +now;
+    const f = new Date(first);
+    months = Math.min(36, Math.max(1, (now.getFullYear() - f.getFullYear()) * 12 + now.getMonth() - f.getMonth() + 1));
+  }
+  return { months, start: new Date(now.getFullYear(), now.getMonth() - (months - 1), 1) };
+}
+function monthBuckets(months, start) {
+  const out = [];
+  for (let i = 0; i < months; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+    out.push({ key: monthKey(d), d, sum: 0, n: 0 });
+  }
+  return out;
+}
+function barsHtml(buckets, selKey, color, act, value) {
+  const max = Math.max(0, ...buckets.map(value));
+  const showEvery = buckets.length <= 12 ? 1 : buckets.length <= 24 ? 2 : 3;
+  return buckets.map((b, i) => {
+    const v = value(b);
+    const h = max ? Math.max(v ? 3 : 0, Math.round((v / max) * 100)) : 0;
+    const sel = b.key === selKey;
+    return `<button class="bar ${sel ? 'sel' : ''}" data-act="${act}" data-k="${b.key}" aria-label="${esc(fMonthLong.format(b.d))}: ${v}">
+      <span class="area"><span class="col" style="height:${h}%;--c:${color}"></span></span>
+      <span class="ml">${i % showEvery === 0 || sel ? esc(fMonth.format(b.d).replace('.', '')) : ''}</span></button>`;
+  }).join('');
+}
+const hbarRow = (label, valueText, frac, color, sub) => `<div class="hbar"><div class="hbar-top"><span>${label}</span><b>${valueText}</b></div>
+  <div class="hbar-track"><span style="width:${Math.max(frac > 0 ? 2 : 0, frac * 100)}%;background:${color}"></span></div>${sub ? `<div class="hbar-sub">${sub}</div>` : ''}</div>`;
+const WEEKDAYS = ['duminica', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
+
+function generalStatsHtml() {
+  const s = ui.stats;
+  const entries = db.entries.filter(e => catById(e.cat));
+  if (!entries.length) return `<div class="empty"><div class="big">📊</div><b>Încă nu sunt date</b>Adaugă câteva lucruri în liste și aici vezi cum stai.</div>`;
+  const { months, start } = rangeOf(s, entries.map(e => e.createdAt));
+  const active = entries.filter(e => !e.done);
+  const overdueNow = active.filter(e => isOverdue(e) || reminderMissed(e)).length;
+  const done = entries.filter(e => e.done && e.doneAt && e.doneAt >= +start);
+  const added = entries.filter(e => e.createdAt >= +start);
+  const withDl = done.filter(e => e.hasDeadline && parseLocal(e.deadline));
+  const onTime = withDl.filter(e => {
+    const d = parseLocal(e.deadline);
+    return e.doneAt <= +(e.deadlineTime ? d : addDays(startOfDay(d), 1));
+  }).length;
+  const rate = withDl.length ? Math.round((onTime / withDl.length) * 100) + '%' : '–';
+
+  const metric = s.act || 'done';
+  const src = metric === 'done' ? done.map(e => new Date(e.doneAt)) : added.map(e => new Date(e.createdAt));
+  const buckets = monthBuckets(months, start);
+  const byKey = Object.fromEntries(buckets.map(b => [b.key, b]));
+  src.forEach(d => { const b = byKey[monthKey(d)]; if (b) b.n++; });
+  const sel = byKey[s.sel] || buckets[buckets.length - 1];
+
+  // per list
+  const per = cats().map(c => ({ c, n: done.filter(e => e.cat === c.id).length })).filter(x => x.n).sort((a, b) => b.n - a.n);
+  const pmax = per.length ? per[0].n : 0;
+  // best weekday
+  const wd = [0, 0, 0, 0, 0, 0, 0];
+  done.forEach(e => { wd[new Date(e.doneAt).getDay()]++; });
+  const best = Math.max(...wd);
+  // reminders
+  const rem = entries.filter(e => e.hasReminder);
+  const remUpcoming = rem.filter(e => !e.done && !reminderMissed(e)).length;
+  const remMissed = rem.filter(reminderMissed).length;
+  const remRepeat = rem.filter(e => !e.done && e.repeat && e.repeat !== 'none').length;
+
+  return `
+    <div class="tiles">
+      ${tile('Active acum', active.length, 'var(--accent)')}
+      ${tile('Întârziate acum', overdueNow, overdueNow ? 'var(--red)' : 'var(--muted)')}
+      ${tile('Bifate', done.length, 'var(--green)')}
+      ${tile('Gata la timp', rate, 'var(--blue)')}
+    </div>
+    <div class="segin" style="margin-top:20px">
+      <button class="${metric === 'done' ? 'on' : ''}" data-act="stat-metric" data-v="done">✓ Bifate</button>
+      <button class="${metric === 'added' ? 'on' : ''}" data-act="stat-metric" data-v="added">＋ Adăugate</button>
+    </div>
+    <div class="form chart">
+      <div class="readout"><b>${esc(cap(fMonthLong.format(sel.d)))}</b><span>${nItems(sel.n)}</span></div>
+      <div class="bars">${barsHtml(buckets, sel.key, metric === 'done' ? '#2EB87A' : '#7C5CFA', 'stat-sel', b => b.n)}</div>
+    </div>
+    <div class="ffoot">${metric === 'done' ? 'Câte ai bifat' : 'Câte ai adăugat'} în fiecare lună. Apasă pe o lună ca să vezi numărul.</div>
+    ${per.length ? `<div class="fhead">Bifate pe liste</div><div class="form">${per.map(x => hbarRow(`${x.c.icon} ${esc(x.c.name)}`, x.n, pmax ? x.n / pmax : 0, colorOf(x.c), '')).join('')}</div>` : ''}
+    <div class="fhead">Remindere</div>
+    <div class="tiles three">
+      ${tile('Programate', remUpcoming, 'var(--pink)')}
+      ${tile('Ratate', remMissed, remMissed ? 'var(--red)' : 'var(--muted)')}
+      ${tile('Repetate', remRepeat, 'var(--purple)')}
+    </div>
+    ${best ? `<div class="fhead">Pe scurt</div><div class="form">
+      <div class="field"><span class="lbl">Ziua în care bifezi cel mai mult</span><b>${cap(WEEKDAYS[wd.indexOf(best)])}</b></div>
+      <div class="field"><span class="lbl">Adăugate în perioadă</span><b>${added.length}</b></div>
+      ${withDl.length ? `<div class="field"><span class="lbl">Cu termen, făcute la timp</span><b>${onTime} din ${withDl.length}</b></div>` : ''}
+    </div>` : ''}`;
+}
+
+function listsStatsHtml() {
+  const rows = cats().map(c => {
+    const items = db.entries.filter(e => e.cat === c.id);
+    const doneN = items.filter(e => e.done).length;
+    const act = items.length - doneN;
+    const over = items.filter(e => isOverdue(e) || reminderMissed(e)).length;
+    let extra = '';
+    if (c.usesAmount) {
+      const t = items.filter(e => e.hasAmount && e.amount > 0).map(e => [e.amount, e.currency]);
+      if (t.length) extra = ` · total ${esc(totals(t))}`;
+    }
+    const frac = items.length ? doneN / items.length : 0;
+    return hbarRow(`${c.icon} ${esc(c.name)}`, `${Math.round(frac * 100)}%`, frac, colorOf(c),
+      `${act} active · ${doneN} bifate${over ? ` · <span style="color:var(--red)">${over} întârziate</span>` : ''}${extra}`);
+  }).join('');
+  return `<div class="form">${rows || '<div class="empty">Nicio listă.</div>'}</div>
+    <div class="ffoot">Procentul arată cât din fiecare listă e bifat.${db.categories.some(c => c.usesAmount) ? ' Pentru detalii pe o listă cu sume, intră în listă și apasă pe 📊.' : ''}</div>`;
+}
+
+function screenStats() {
+  const s = ui.stats;
+  const views = [['general', 'General'], ['bani', 'Bani'], ['liste', 'Liste']];
+  let body;
+  if (s.view === 'bani') body = moneyStatsHtml();
+  else if (s.view === 'liste') body = listsStatsHtml();
+  else body = generalStatsHtml();
+  return `
+    <div class="topbar"><div class="left">${brand()}</div><div class="right"></div></div>
+    <h1>Statistici</h1>
+    <div class="seg" style="margin-top:0">${views.map(([k, l]) => `<button class="${s.view === k ? 'on' : ''}" data-act="stat-view" data-v="${k}">${l}</button>`).join('')}</div>
+    ${s.view !== 'liste' ? `<div class="segin" style="margin:12px 0 14px">${[['6', '6 luni'], ['12', '12 luni'], ['all', 'Tot']].map(([k, l]) => `<button class="${s.range === k ? 'on' : ''}" data-act="stat-range" data-v="${k}">${l}</button>`).join('')}</div>` : '<div style="height:14px"></div>'}
+    ${body}`;
+}
+
 // ---------- money overview across all lists ----------
 // spent    = payments marked as paid ("de plătit" + bifat), orders marked "Plătit", other money items checked
 // received = "de primit" items checked
@@ -1080,7 +1337,7 @@ function openMoney() {
   renderSheet();
 }
 function moneyStatsHtml() {
-  const s = ui.sheet;
+  const s = ui.stats;
   const now = new Date();
   const all = moneyItems();
   const counts = {};
@@ -1139,11 +1396,7 @@ function moneyStatsHtml() {
   const other = sum(inRange, metric).filter(x => x.e.currency !== cur);
   const word = metric === 'spent' ? 'Cheltuit' : 'Primit';
 
-  return `<div class="overlay"></div>
-  <div class="panel">
-    <div class="panel-head"><button data-act="sheet-close">Închide</button><div class="t">💰 Bani</div><span style="min-width:70px"></span></div>
-    <div class="panel-body">
-      <div class="segin">${[['6', '6 luni'], ['12', '12 luni'], ['all', 'Tot']].map(([k, l]) => `<button class="${s.range === k ? 'on' : ''}" data-act="money-range" data-v="${k}">${l}</button>`).join('')}</div>
+  return `
       ${!all.length ? `<div class="empty"><div class="big">💰</div><b>Încă nu sunt sume</b>Adaugă plăți sau comenzi cu sumă și aici vezi cât ai cheltuit și cât ai primit.</div>` : `
       <div class="tiles">
         ${tile('Cheltuit', totals(pairs(spent)), 'var(--red)')}
@@ -1171,9 +1424,7 @@ function moneyStatsHtml() {
 
       ${lists.length ? `<div class="fhead">${word} pe liste</div><div class="form">${lists.map(l => hbar(`${l.c.icon} ${esc(l.c.name)}`, l.sum, lmax, colorOf(l.c), nItems(l.n))).join('')}</div>` : ''}
       ${vendors.length ? `<div class="fhead">${metric === 'spent' ? 'Cui ai plătit cel mai mult' : 'De la cine ai primit cel mai mult'}</div><div class="form">${vendors.map(([n, v]) => hbar(esc(n), v.sum, vmax, color, nItems(v.n))).join('')}</div>` : ''}
-      <div class="ffoot" style="margin-top:14px">Cheltuit = plăți achitate și comenzi marcate „Plătit”. Primit = sumele „de primit” bifate. Data folosită: scadența (la plăți) sau ziua adăugării.</div>`}
-    </div>
-  </div>`;
+      <div class="ffoot" style="margin-top:14px">Cheltuit = plăți achitate și comenzi marcate „Plătit”. Primit = sumele „de primit” bifate. Data folosită: scadența (la plăți) sau ziua adăugării.</div>`}`;
 }
 
 // ---------- action sheet ----------
@@ -1196,7 +1447,7 @@ function renderSheet() {
   const body = el.querySelector('.panel-body');
   const scroll = body ? body.scrollTop : 0;
   const t = ui.sheet.type;
-  el.innerHTML = t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml() : t === 'money' ? moneyStatsHtml() : actionsHtml();
+  el.innerHTML = t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml() : t === 'search' ? searchSheetHtml() : actionsHtml();
   const nb = el.querySelector('.panel-body');
   if (nb) nb.scrollTop = scroll;
   // no slide animation on re-render
@@ -1256,15 +1507,18 @@ document.addEventListener('click', ev => {
   const act = el.dataset.act, id = el.dataset.id;
   const s = ui.sheet;
   switch (act) {
-    case 'tab': ui.tab = el.dataset.tab; ui.catId = null; ui.reorder = false; ui.search = ''; render(); window.scrollTo(0, 0); break;
+    case 'tab': switchTab(el.dataset.tab); break;
+    case 'search-open': openSearch(); break;
+    case 'search-cat': ui.sheet = null; renderSheet(); ui.tab = 'lists'; ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); window.scrollTo(0, 0); break;
     case 'open': { const e = entryById(id); if (e) openEntry(e.cat, e.id); break; }
     case 'toggle': { const e = entryById(id); if (e) askThenToggle(e); break; }
     case 'undo': undoDone(id); break;
     case 'stats': openStats(id); break;
-    case 'money': openMoney(); break;
-    case 'money-range': s.range = el.dataset.v; s.sel = monthKey(new Date()); renderSheet(); break;
-    case 'money-metric': s.metric = el.dataset.v; renderSheet(); break;
-    case 'money-sel': s.sel = el.dataset.k; renderSheet(); break;
+    case 'money-metric': ui.stats.metric = el.dataset.v; render(); break;
+    case 'money-sel': case 'stat-sel': ui.stats.sel = el.dataset.k; render(); break;
+    case 'stat-view': ui.stats.view = el.dataset.v; ui.stats.sel = monthKey(new Date()); render(); window.scrollTo(0, 0); break;
+    case 'stat-range': ui.stats.range = el.dataset.v; ui.stats.sel = monthKey(new Date()); render(); break;
+    case 'stat-metric': ui.stats.act = el.dataset.v; render(); break;
     case 'swipe-del': closeSwipe(); confirmSwipeDelete(el.dataset.kind, id); break;
     case 'swipe-set': closeSwipe(); openCategory(id); break;
     case 'stats-range': s.range = el.dataset.v; s.sel = monthKey(new Date()); renderSheet(); break;
@@ -1337,12 +1591,18 @@ document.addEventListener('click', ev => {
       break;
     }
   }
+  if (ui.sheet?.type === 'search' && ['toggle', 'sub', 'undo', 'alarm'].includes(act)) refreshSearch();
   if (act === 'toggle' || act === 'sub' || act === 'alarm' || act === 'dsub-toggle' || act === 'dsub-del' || act === 'c-color' || act === 'c-icon') ev.stopPropagation();
 });
 
 // bound inputs (data-bind) – text fields update silently, toggles/selects re-render
 document.addEventListener('input', ev => {
   const t = ev.target;
+  if (t.id === 'gsearch' && ui.sheet?.type === 'search') {
+    ui.sheet.q = t.value;
+    refreshSearch();
+    return;
+  }
   if (t.id === 'search') {
     ui.search = t.value;
     const c = catById(ui.catId);
@@ -1594,6 +1854,86 @@ function confirmSwipeDelete(kind, id) {
     ]);
   }
 }
+
+// ---------- long-press + drag up/down to reorder lists and items ----------
+const LONG_PRESS_MS = 450;
+let lp = null, ldrag = null;
+document.addEventListener('pointerdown', ev => {
+  if (ui.sheet || drag || ldrag) return;
+  const wrap = ev.target.closest('.swipe[data-reorder]');
+  if (!wrap || wrap === openSwipeEl || ev.target.closest('button, input, select, textarea')) return;
+  lp = { wrap, x: ev.clientX, y: ev.clientY, id: ev.pointerId, timer: setTimeout(startLongDrag, LONG_PRESS_MS) };
+});
+function cancelLongPress() { if (lp) { clearTimeout(lp.timer); lp = null; } }
+function startLongDrag() {
+  if (!lp) return;
+  const { wrap, y, id } = lp;
+  lp = null;
+  sw0 = null;                       // a long press is not a swipe
+  closeSwipe();
+  const rows = [...wrap.parentElement.children].filter(r => r.matches('.swipe[data-reorder]'));
+  const from = rows.indexOf(wrap);
+  if (from < 0 || rows.length < 2) return;
+  ldrag = { wrap, rows, from, to: from, startY: y, id, rects: rows.map(r => r.getBoundingClientRect()) };
+  wrap.classList.add('lifted');
+  try { navigator.vibrate?.(15); } catch (e) { /* ignore */ }
+}
+document.addEventListener('pointermove', ev => {
+  if (lp && ev.pointerId === lp.id && (Math.abs(ev.clientX - lp.x) > 8 || Math.abs(ev.clientY - lp.y) > 8)) cancelLongPress();
+  if (!ldrag || ev.pointerId !== ldrag.id) return;
+  ev.preventDefault();
+  const { rows, rects, from } = ldrag;
+  const dy = ev.clientY - ldrag.startY;
+  ldrag.wrap.style.transform = `translateY(${dy}px) scale(1.02)`;
+  const center = rects[from].top + rects[from].height / 2 + dy;
+  let to = 0;
+  rects.forEach((r, i) => { if (i !== from && r.top + r.height / 2 < center) to++; });
+  ldrag.to = to;
+  const h = rects[from].height;
+  rows.forEach((r, i) => {
+    if (i === from) return;
+    let shift = 0;
+    if (from < to && i > from && i <= to) shift = -h;
+    if (from > to && i >= to && i < from) shift = h;
+    r.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
+}, { passive: false });
+// while lifting a row, the page must not scroll
+document.addEventListener('touchmove', ev => { if (ldrag) ev.preventDefault(); }, { passive: false });
+function endLongDrag() {
+  cancelLongPress();
+  if (!ldrag) return;
+  const { rows, from, to, wrap } = ldrag;
+  ldrag = null;
+  suppressClick = true;
+  setTimeout(() => { suppressClick = false; }, 350);
+  rows.forEach(r => { r.style.transform = ''; });
+  wrap.classList.remove('lifted');
+  if (from === to) return;
+  const oldIds = rows.map(r => r.dataset.id);
+  const newIds = [...oldIds];
+  const [moved] = newIds.splice(from, 1);
+  newIds.splice(to, 0, moved);
+  if (wrap.dataset.reorder === 'cat') {
+    const others = cats().filter(c => !newIds.includes(c.id));
+    [...newIds.map(catById), ...others].forEach((c, i) => { if (c) c.order = i; });
+  } else {
+    const c = catById(ui.catId);
+    // every item currently shown, in screen order, with this section replaced by its new order
+    const all = [...document.querySelectorAll('#catlist .swipe[data-reorder="entry"]')].map(r => r.dataset.id);
+    const first = all.indexOf(oldIds[0]);
+    all.splice(first, oldIds.length, ...newIds);
+    all.forEach((eid, i) => { const e = entryById(eid); if (e) e.pos = i; });
+    if (c && c.groupMode === 'date') {
+      c.groupMode = 'none';
+      toast('Lista e acum în „Ordinea mea”. Revii din ⋯ → Grupare după dată.');
+    }
+  }
+  save();
+  render();
+}
+document.addEventListener('pointerup', endLongDrag);
+document.addEventListener('pointercancel', ev => { if (!ldrag) cancelLongPress(); else endLongDrag(); });
 
 // ---------- iPhone: close the keyboard when you start scrolling ----------
 // (otherwise the blinking text cursor drifts while the panel scrolls)
