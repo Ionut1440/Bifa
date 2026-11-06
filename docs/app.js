@@ -986,6 +986,23 @@ function exitSearch() {
   setTimeout(() => { if (!ui.searching) { const l = document.getElementById('slayer'); if (l) l.innerHTML = ''; } }, 50);
 }
 document.addEventListener('focusin', ev => { if (ev.target.id === 'gsearch') enterSearch(); });
+
+// while you type (keyboard open), hide the bottom bar — on iPhone it would float above the keyboard —
+// and bring the shopping "add" field near the top so its suggestions are visible above the keyboard
+const isTypingField = el => el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(el.type)));
+document.addEventListener('focusin', ev => {
+  if (!isTypingField(ev.target)) return;
+  document.body.classList.add('typing');
+  if (ev.target.id === 'quickadd') {
+    setTimeout(() => {
+      const top = ev.target.getBoundingClientRect().top + scroller().scrollTop - 72;
+      scroller().scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    }, 250);
+  }
+});
+document.addEventListener('focusout', () => {
+  setTimeout(() => { if (!isTypingField(document.activeElement)) document.body.classList.remove('typing'); }, 80);
+});
 // Bottom bar like WhatsApp: a "bubble" sits behind the selected tab and slides;
 // drag your finger along the bar and the bubble follows, let go to open that tab.
 const TABS = [['today', 'Azi', 'sun'], ['lists', 'Liste', 'grid'], ['reminders', 'Remindere', 'bell'], ['stats', 'Statistici', 'chart']];
@@ -1088,7 +1105,7 @@ window.addEventListener('resize', () => { if (!tabDrag) placePill(document.query
 // scrolling down: the glass bar gets a little smaller; scrolling up or at the top: back to normal
 let lastScrollY = 0;
 // (the bar no longer shrinks while scrolling: content now stops right above it)
-function scroller() { return document.getElementById('app'); }
+function scroller() { return document.scrollingElement || document.documentElement; }
 
 // ---------- entry editor ----------
 function newDraft(c) {
