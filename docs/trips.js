@@ -490,14 +490,15 @@ function tripSheetHtml(type) {
             <select data-tb="currency" style="max-width:90px">${TRIP_CURRENCIES.map(x => `<option ${x === d.currency ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
           <div class="field"><span class="lbl">Plătit deja</span>${trSw('paid', d.paid)}</div>
         </div>
-        <div class="fhead">Bilete și fișiere</div>
+        ${(() => { const fk = fileKind(d.type); if (!fk && !(d.files || []).length) return '';
+          return `<div class="fhead">${fk ? fk.head : 'Fișiere'}</div>
         <div class="form">
           ${(d.files || []).map(f => `<div class="field"><span class="ico">${f.type.startsWith('image/') ? '🖼️' : '📄'}</span>
             <button class="lbl" style="text-align:left;color:var(--accent)" data-act="tr-file-open" data-fid="${f.id}">${esc(f.name)}</button>
             <button class="x" data-act="tr-file-del" data-fid="${f.id}" style="color:var(--muted);font-size:16px;width:30px">✕</button></div>`).join('')}
-          <button class="linkrow" data-act="tr-file-add">📎 Adaugă bilet (poză sau PDF)</button>
+          ${fk ? `<button class="linkrow" data-act="tr-file-add">📎 ${fk.add}</button>` : ''}
         </div>
-        <div class="ffoot">Pune PDF-ul sau poza biletului (poți alege mai multe): citesc din el zborul / trenul, traseul, orele, data și codul și completez câmpurile goale.</div>
+        ${fk?.foot ? `<div class="ffoot">${fk.foot}</div>` : ''}`; })()}
         ${!s.isNew ? `<div class="form" style="margin-top:20px"><div class="field"><span class="lbl">Făcut</span>${trSw('done', d.done)}</div></div>
           <button class="btn red block mt" data-act="tr-del-item">Șterge</button>` : ''}
       </div></div>`;
@@ -573,6 +574,19 @@ async function storeFile(f) {
   try { navigator.storage?.persist?.(); } catch (err) { /* ignore */ }
   return { id, name: f.name || 'bilet', type: f.type || 'application/octet-stream' };
 }
+// what kind of file makes sense for each type (none for a café, beach, shop or note)
+function fileKind(type) {
+  const g = TT[type]?.group;
+  if (g === 'transport' || ['museum', 'sight', 'event', 'activity'].includes(type))
+    return { head: 'Bilet', add: 'Adaugă bilet (poză sau PDF)', read: true,
+      foot: 'Pune PDF-ul sau poza biletului (poți alege mai multe): citesc din el cursa, traseul, orele, data și codul și completez câmpurile goale.' };
+  if (type === 'hotel') return { head: 'Rezervare', add: 'Adaugă rezervarea (poză sau PDF)', read: true,
+    foot: 'Pune confirmarea rezervării: citesc din ea datele, adresa și codul și completez câmpurile goale.' };
+  if (type === 'restaurant') return { head: 'Rezervare', add: 'Adaugă rezervarea (poză sau PDF)' };
+  if (type === 'doc') return { head: 'Document', add: 'Adaugă documentul (poză sau PDF)' };
+  return null;
+}
+
 // inside the item editor: attach one or more files and fill the empty fields from the first ticket
 function addTripFiles() {
   pickFiles(async files => {
@@ -583,13 +597,14 @@ function addTripFiles() {
       if (!meta) continue;
       (s.d.files ||= []).push(meta);
       renderSheet();
+      if (!fileKind(s.d.type)?.read) { filled = null; continue; }
       if (!filled.length) {
         toast('Citesc biletul…');
         try { filled = applyTicket(s.d, parseTicket(await ticketText(f), entryById(s.tripId).trip)); } catch (err) { /* no text found */ }
       }
     }
     if (ui.sheet === s) renderSheet();
-    toast(filled.length ? `Am completat: ${filled.join(', ')}` : 'Am salvat biletul (n-am găsit date de citit)');
+    toast(filled === null ? 'Am salvat fișierul' : filled.length ? `Am completat: ${filled.join(', ')}` : 'Am salvat biletul (n-am găsit date de citit)');
   });
 }
 // in "Bilete": each chosen file becomes a ticket, filled from what's written on it
