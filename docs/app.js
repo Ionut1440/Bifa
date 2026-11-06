@@ -1137,6 +1137,8 @@ function magnify(buttons, x, maxScale, reach) {
 function unmagnify(buttons) { buttons.forEach(b => { b.style.transform = ''; }); }
 // liquid glass: while you drag, the bubble stretches with the finger's speed and settles when it slows down
 function stretchPill(pill, drag, x) {
+  return;   // stretching turned off: the user wants a plain clear bubble
+  // eslint-disable-next-line no-unreachable
   if (!pill) return;
   const now = performance.now();
   const dt = Math.max(16, now - (drag.t || now));
