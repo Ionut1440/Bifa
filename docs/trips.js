@@ -29,10 +29,24 @@ const TT = Object.fromEntries(TRIP_TYPES.map(t => [t[0], { icon: t[1], label: t[
 const isTransport = type => TT[type]?.group === 'transport';
 const TRIP_EMOJIS = ['🏖️', '🏝️', '🏔️', '⛷️', '🏙️', '🗼', '🗽', '🏛️', '🕌', '🌴', '🚢', '🏕️', '🎡', '🍷', '✈️', '🧳'];
 const TRIP_CURRENCIES = ['EUR', 'RON', 'USD', 'GBP', 'CHF', 'HUF', 'CZK', 'PLN', 'TRY', 'BGN'];
-const PACK_TEMPLATE = ['Pașaport / buletin', 'Bilete', 'Card și bani cash', 'Asigurare de călătorie', 'Permis de conducere', 'Încărcător telefon',
-  'Baterie externă', 'Adaptor priză', 'Căști', 'Medicamente', 'Periuță și pastă de dinți', 'Produse de igienă', 'Haine', 'Lenjerie',
-  'Pijama', 'Încălțăminte comodă', 'Geacă / hanorac', 'Costum de baie', 'Ochelari de soare', 'Cremă de protecție solară', 'Umbrelă',
-  'Sticlă de apă', 'Rucsac mic', 'Cheile de acasă'];
+// the user's own standard packing list (editable in the app; every new trip starts with it)
+const PACK_DEFAULT = ['Haine (pantaloni, tricouri, cămăși, bluze, pulovere, șosete, chiloți, pijamale)', 'Papuci', 'Lanternă', 'Kindle', 'Buletin',
+  'Pașaport', 'Carnet vaccin', 'Încărcător telefon', 'Spray țânțari', 'Baterie externă', 'Pastă de dinți', 'Periuță de dinți', 'Bețișoare de urechi',
+  'Pieptăn', 'Fixativ', 'Gel de duș', 'Deodorant', 'Telefon', 'Chei', 'Portofel', 'Parfum', 'Căști', 'Șampon', 'Mini uscător',
+  'Șervețele pentru ochelari', 'Șervețele umede', 'Șervețele', 'Umbrelă', 'Plasă goală pentru haine', 'Plasturi', 'Pastile',
+  'Picături și unguent pentru ochi', 'Bani', 'Cabluri de încărcare', 'Creme', 'Card', 'Card metrou + STB', 'Pelerină de ploaie', 'Biguri'];
+const packTemplate = () => { (db.settings ||= {}).packTemplate ||= [...PACK_DEFAULT]; return db.settings.packTemplate; };
+const packFromTemplate = () => packTemplate().map(title => ({ id: uid(), title, done: false }));
+// examples shown in the empty fields, per kind of transport
+const TRIP_HINTS = {
+  flight: ['Wizz W6 3141', 'OTP București', 'FCO Roma'],
+  train: ['IR 1581', 'București Nord', 'Brașov'],
+  bus: ['FlixBus 1234', 'Autogara Militari', 'Viena'],
+  metro: ['M2 / autobuz 783', 'Piața Unirii', 'Aeroport'],
+  taxi: ['Bolt / Uber / transfer', 'Aeroport', 'Hotel'],
+  car: ['Mașină închiriată', 'Aeroport', 'Hotel'],
+  ferry: ['Feribot Blue Star', 'Pireu', 'Mykonos'],
+};
 
 const isTripCat = c => c?.kind === 'trips';
 const tripOf = e => e?.trip;
@@ -101,6 +115,133 @@ function tripAfterRender() {
   });
 }
 
+// ---------- read the data from a ticket (PDF text with pdf.js, photos with OCR) ----------
+const LIB_PDF = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const LIB_PDF_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const LIB_OCR = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const libs = {};
+function loadScript(url) {
+  return libs[url] ||= new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = url; s.async = true; s.onload = res; s.onerror = () => { delete libs[url]; rej(new Error('load ' + url)); };
+    document.head.appendChild(s);
+  });
+}
+async function ticketText(file) {
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
+    await loadScript(LIB_PDF);
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = LIB_PDF_WORKER;
+    const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    let txt = '';
+    for (let p = 1; p <= Math.min(pdf.numPages, 3); p++) {
+      const c = await (await pdf.getPage(p)).getTextContent();
+      txt += ' ' + c.items.map(i => i.str).join(' ');
+    }
+    return txt;
+  }
+  if ((file.type || '').startsWith('image/')) {
+    await loadScript(LIB_OCR);
+    const r = await window.Tesseract.recognize(file, 'eng');
+    return r?.data?.text || '';
+  }
+  return '';
+}
+const MONTHS = { ian: 1, jan: 1, feb: 2, mar: 3, apr: 4, mai: 5, may: 5, iun: 6, jun: 6, iul: 7, jul: 7, aug: 8, sep: 9, oct: 10, noi: 11, nov: 11, dec: 12 };
+function parseTicket(raw, trip) {
+  const T = ' ' + String(raw || '').replace(/\s+/g, ' ') + ' ';
+  const U = normText(T).toUpperCase();
+  const out = {};
+  // what kind of ticket
+  const airlines = [['WIZZ', 'Wizz Air'], ['RYANAIR', 'Ryanair'], ['TAROM', 'TAROM'], ['LUFTHANSA', 'Lufthansa'], ['EASYJET', 'easyJet'], ['TURKISH AIRLINES', 'Turkish Airlines'],
+    ['AUSTRIAN', 'Austrian'], ['KLM', 'KLM'], ['AIR FRANCE', 'Air France'], ['BRITISH AIRWAYS', 'British Airways'], ['ITA AIRWAYS', 'ITA Airways'], ['AEGEAN', 'Aegean'],
+    ['HISKY', 'HiSky'], ['ANIMAWINGS', 'AnimaWings'], ['SWISS', 'Swiss'], ['VUELING', 'Vueling'], ['EUROWINGS', 'Eurowings'], ['LOT POLISH', 'LOT']];
+  const al = airlines.find(([k]) => U.includes(k));
+  const fl = U.match(/\b(?:FLIGHT|ZBOR(?:UL)?|FLUG|VOL|VUELO|VOLO)\s*(?:NO\.?|NR\.?|NUMBER|NUMAR)?\s*[:#]?\s*([A-Z0-9]{2})\s?(\d{1,4})\b/)
+    || U.match(/\b(W6|W4|W9|FR|RR|RO|LH|OS|AF|KL|BA|TK|U2|EJU|EW|VY|AZ|LO|A3|0B|H4|LX|SN|IB|TP|EK|QR|SK|DY|FB|JU|PC|XQ|HV|TO|V7|AY)\s?(\d{2,4})\b/);
+  const trainWords = /CFR|TREN|TRAIN|ZUG|OBB|SNCF|TRENITALIA|FRECCIA|ITALO|BAHN|RENFE|RAIL|VAGON|WAGEN|COACH|CARROZZA|REGIOTRANS|INTERREGIONAL/.test(U);
+  const strongFlight = al || /BOARDING PASS|IMBARCARE|GATE CLOSES|\bFLIGHT\b|\bZBOR/.test(U);
+  if (strongFlight || (fl && !trainWords)) {
+    out.type = 'flight';
+    out.title = [al?.[1], fl ? `${fl[1]} ${fl[2]}` : ''].filter(Boolean).join(' ') || 'Zbor';
+  } else {
+    const tr = U.match(/\b(IRN|IR|IC|ICE|EC|EN|RJX|RJ|RE|TGV|FR)\s?(\d{2,5})\b/);
+    if (trainWords) {
+      out.type = 'train';
+      const brand = U.includes('FRECCIAROSSA') ? 'Frecciarossa ' : U.includes('ITALO') ? 'Italo ' : '';
+      out.title = tr ? `${brand}${tr[1]} ${tr[2]}` : (U.includes('CFR') ? 'CFR Călători' : 'Tren');
+    } else if (/FLIXBUS|AUTOCAR|AUTOBUZ|COACH BUS|BUS TICKET/.test(U)) { out.type = 'bus'; out.title = U.includes('FLIXBUS') ? 'FlixBus' : 'Autobuz'; }
+    else if (/MUZEU|MUSEUM|MUSEO|MUSEI|MUSEE|GALLERY|GALERIE|PINACOTECA/.test(U)) {
+      out.type = 'museum';
+      const mm = T.match(/((?:Muzeul|Museo|Musei|Museum|Musée|Galleria|Galeria|Pinacoteca)\s+[A-ZĂÂÎȘȚ][^\d,.;:]{2,40}?)(?=\s+(?:Ticket|Bilet|Entry|Intrare|Date|Data|Biglietto|\d)|$)/i)
+        || T.match(/([A-Z][\w']+(?:\s+[A-Z][\w']+){0,3}\s+(?:Museum|Gallery))/);
+      if (mm) out.title = mm[1].trim();
+    }
+    else if (/HOTEL|CHECK-IN|CHECK IN|BOOKING\.COM|AIRBNB|CAZARE|APARTMENT|HOSTEL/.test(U)) {
+      out.type = 'hotel';
+      const hm = T.match(/\b(Hotel|Hostel|Apartment|Pensiunea|Vila|Residence)\s+([A-ZĂÂÎȘȚ][\wăâîșț'&-]+(?:\s+[A-ZĂÂÎȘȚ][\wăâîșț'&-]+)?)/);
+      if (hm && !/^Check/i.test(hm[2])) out.title = `${hm[1]} ${hm[2]}`.replace(/\s+(Check|Confirm|Booking|Total|Rezervare|Data|Date)\b.*$/i, '');
+    }
+    else if (/CONCERT|TEATRU|THEATRE|THEATER|STADIUM|STADION|EVENT|SHOW/.test(U)) out.type = 'event';
+  }
+  // route: "OTP - FCO", "(OTP) … (FCO)"
+  const r1 = U.match(/\b([A-Z]{3})\s?(?:-|–|→|>|TO)\s?([A-Z]{3})\b/);
+  const codes = [...U.matchAll(/\(([A-Z]{3})\)/g)].map(m => m[1]);
+  if (r1 && !['THE', 'AND', 'FOR'].includes(r1[1])) { out.from = r1[1]; out.to = r1[2]; }
+  else if (codes.length >= 2) { out.from = codes[0]; out.to = codes[1]; }
+  if (!out.from && (out.type === 'train' || out.type === 'bus')) {   // "Roma Termini - Firenze SMN"
+    const st = T.match(/([A-ZĂÂÎȘȚ][a-zăâîșțéèüö]+(?:\s[A-ZĂÂÎȘȚ][\wăâîșțéèüö.]*)?)\s[-–→]\s([A-ZĂÂÎȘȚ][a-zăâîșțéèüö]+(?:\s[A-ZĂÂÎȘȚ][\wăâîșțéèüö.]*)?)/);
+    if (st) { out.from = st[1].trim(); out.to = st[2].trim(); }
+  }
+  if (!out.from) {
+    const fw = T.match(/(?:From|De la|Plecare din|Departure|Abfahrt|Partenza|Din)\s*[:\-]?\s*([A-ZĂÂÎȘȚ][A-Za-zăâîșțéèüöß .'-]{2,28}?)\s+(?:To|Spre|Către|Catre|La|Sosire|Arrival|Ankunft|Arrivo|Nach|A)\s*[:\-]?\s*([A-ZĂÂÎȘȚ][A-Za-zăâîșțéèüöß .'-]{2,28}?)(?=\s|$)/);
+    if (fw) { out.from = fw[1].trim(); out.to = fw[2].trim(); }
+  }
+  // booking code, seat, gate, coach
+  const refs = [];
+  const ref = T.match(/(?:PNR|Booking (?:reference|ref\.?|code|number)|Reservation (?:code|number)|Confirmation (?:code|number)|Cod(?:ul)? (?:de )?rezervare|Rezervare|Buchungsnummer|Codice prenotazione)\s*[:#]?\s*([A-Z0-9]{5,10})\b/i);
+  if (ref) refs.push(ref[1].toUpperCase());
+  const coach = T.match(/\b(?:Coach|Vagon(?:ul)?|Wagen|Carrozza)\s*[:#]?\s*(\d{1,3})\b/i); if (coach) refs.push('vagon ' + coach[1]);
+  const seat = T.match(/\b(?:Seat|Loc(?:ul)?|Sitz(?:platz)?|Posto)\s*[:#]?\s*(\d{1,3}[A-K]?)\b/i); if (seat) refs.push('loc ' + seat[1]);
+  const gate = T.match(/\b(?:Gate|Poarta|Poartă)\s*[:#]?\s*([A-Z]?\d{1,3}[A-Z]?)\b/i); if (gate) refs.push('poarta ' + gate[1]);
+  if (refs.length) out.ref = refs.join(' · ');
+  // times: first = departure, second = arrival
+  const times = [...T.matchAll(/\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/g)].map(m => `${m[1].padStart(2, '0')}:${m[2]}`);
+  if (times[0]) out.time = times[0];
+  if (times[1] && times[1] !== times[0]) out.endTime = times[1];
+  // date → the matching day of the trip
+  const dates = [];
+  for (const m of T.matchAll(/\b(\d{1,2})[./-](\d{1,2})[./-](20\d{2})\b/g)) dates.push([+m[3], +m[2], +m[1]]);
+  for (const m of T.matchAll(/\b(20\d{2})-(\d{2})-(\d{2})\b/g)) dates.push([+m[1], +m[2], +m[3]]);
+  for (const m of normText(T).matchAll(/\b(\d{1,2})\s?([a-z]{3})[a-z]*\.?\s?(20\d{2})?\b/g)) {
+    const mo = MONTHS[m[2]]; if (mo) dates.push([m[3] ? +m[3] : dayOf(trip.start).getFullYear(), mo, +m[1]]);
+  }
+  const days = new Set(tripDays(trip).map(dkey));
+  const keys = dates.filter(([y, m, d]) => m >= 1 && m <= 12 && d >= 1 && d <= 31).map(([y, m, d]) => `${y}-${pad(m)}-${pad(d)}`);
+  out.day = keys.find(k => days.has(k)) || '';
+  // price
+  const pr = T.match(/(\d{1,5}(?:[.,]\d{2}))\s?(EUR|€|RON|LEI|USD|\$|GBP|£|CHF|HUF|CZK|PLN)(?![A-Za-z])/i) || T.match(/(EUR|€|RON|USD|GBP|£)\s?(\d{1,5}[.,]\d{2})/i);
+  if (pr) {
+    const [num, cur] = /\d/.test(pr[1]) ? [pr[1], pr[2]] : [pr[2], pr[1]];
+    out.cost = parseAmount(num);
+    out.currency = ({ '€': 'EUR', LEI: 'RON', '$': 'USD', '£': 'GBP' })[cur.toUpperCase()] || cur.toUpperCase();
+  }
+  return out;
+}
+// fill only the empty fields of the draft; returns the list of what was filled
+function applyTicket(d, p) {
+  const got = [];
+  const isNew = !(d.title || '').trim();
+  if (p.type && isNew) { d.type = p.type; got.push(TT[p.type].label.toLowerCase()); }
+  if (p.title && isNew) d.title = p.title;
+  if (p.from && !d.from) { d.from = p.from; d.to = d.to || p.to || ''; got.push('traseul'); }
+  if (p.time && !d.time) { d.time = p.time; got.push('ora'); }
+  if (p.endTime && !d.endTime) d.endTime = p.endTime;
+  if (p.day && !d.day) { d.day = p.day; got.push('ziua'); }
+  if (p.ref && !d.ref) { d.ref = p.ref; got.push('codul'); }
+  if (p.cost && !parseAmount(d.costText)) { d.costText = String(p.cost).replace('.', ','); if (p.currency) d.currency = p.currency; got.push('prețul'); }
+  return got;
+}
+
 // ---------- screens ----------
 function currentTrip() { const e = ui.trip?.id ? entryById(ui.trip.id) : null; return e?.trip ? e : null; }
 
@@ -143,13 +284,15 @@ function itemRow(it, opts = {}) {
   if (it.cost) chips.push(chip(money(it.cost, it.currency) + (it.paid ? ' ✓' : ''), it.paid ? 'var(--green)' : 'var(--orange)'));
   if ((it.files || []).length) chips.push(chip(`📎 ${it.files.length}`, 'var(--muted)'));
   if (opts.showDay && it.day) chips.push(chip(fmtDay(dayOf(it.day)), 'var(--muted)'));
-  return `<div class="row trow ${it.done ? 'done' : ''}" data-act="tr-item" data-iid="${it.id}">
+  const row = `<div class="row trow ${opts.swipe ? 'swipe-content' : ''} ${it.done ? 'done' : ''}" data-act="tr-item" data-iid="${it.id}">
     <button class="check ${it.done ? 'on' : ''}" style="--c:var(--accent)" data-act="tr-done" data-iid="${it.id}" aria-label="Făcut">${ICON.check}</button>
     <div class="ticon">${tt.icon}</div>
     <div class="rbody"><div class="rtitle">${esc(it.title || tt.label)}</div>${it.notes ? `<div class="rdetails">${esc(it.notes)}</div>` : ''}
       ${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}</div>
     ${it.time ? `<div class="dtime">${esc(it.time)}${it.endTime ? `<div class="tend">${esc(it.endTime)}</div>` : ''}</div>` : ''}
   </div>`;
+  if (!opts.swipe) return row;
+  return `<div class="swipe" data-swipe="titem" data-id="${it.id}"><button class="swipe-del" data-act="swipe-del" data-kind="titem" data-id="${it.id}">${ICON.trash}<span>Șterge</span></button>${row}</div>`;
 }
 
 function screenTripDetail(c, e) {
@@ -178,7 +321,7 @@ function tripProgramHtml(e) {
     const k = dkey(d);
     const list = sortByTime(items.filter(it => it.day === k));
     return `<div class="sec-title ${sameDay(d, today) ? 'orange' : ''}" ${sameDay(d, today) ? 'id="tr-today"' : ''}>Ziua ${i + 1} · ${esc(cap(fLong.format(d)))}${sameDay(d, today) ? ' · azi' : ''}</div>
-      <div class="group">${list.map(it => itemRow(it)).join('')}
+      <div class="group">${list.map(it => itemRow(it, { swipe: true })).join('')}
         <button class="linkrow" data-act="tr-add" data-day="${k}">${ICON.plus} Adaugă în ziua ${i + 1}</button></div>`;
   }).join('');
   // ideas: places you want to try, not on a day yet
@@ -186,7 +329,7 @@ function tripProgramHtml(e) {
   const groups = [['food', '🍽️ Unde mănânci / bei'], ['visit', '🏛️ De văzut și de făcut'], ['stay', '🏨 Cazare'], ['transport', '🚆 Transport'], ['other', '📝 Altele']];
   const ideasHtml = groups.map(([g, title]) => {
     const list = ideas.filter(it => (TT[it.type]?.group || 'other') === g);
-    return list.length ? `<div class="fhead" style="margin-top:14px">${title}</div><div class="group">${sortByTime(list).map(it => itemRow(it)).join('')}</div>` : '';
+    return list.length ? `<div class="fhead" style="margin-top:14px">${title}</div><div class="group">${sortByTime(list).map(it => itemRow(it, { swipe: true })).join('')}</div>` : '';
   }).join('');
   return `${days}
     <div class="sec-title" style="margin-top:28px">💡 Idei · de programat</div>
@@ -200,23 +343,35 @@ function tripProgramHtml(e) {
 
 function tripTicketsHtml(e) {
   const items = tripItems(e.trip);
-  const tickets = sortByTime(items.filter(it => it.type !== 'doc' && (it.ref || (it.files || []).length || isTransport(it.type) || it.type === 'hotel' || it.type === 'museum' || it.type === 'event')))
-    .sort((a, b) => (a.day || '9999').localeCompare(b.day || '9999') || (a.time || '').localeCompare(b.time || ''));
-  const docs = items.filter(it => it.type === 'doc');
+  // your own order (long-press + drag) wins; otherwise by day and time
+  const byOrder = list => [...list].sort((a, b) => {
+    const pa = typeof a.tpos === 'number', pb = typeof b.tpos === 'number';
+    if (pa && pb) return a.tpos - b.tpos;
+    if (pa !== pb) return pa ? -1 : 1;
+    return (a.day || '9999').localeCompare(b.day || '9999') || (a.time || '').localeCompare(b.time || '');
+  });
+  const tickets = byOrder(items.filter(it => it.type !== 'doc' && (it.ref || (it.files || []).length || isTransport(it.type) || it.type === 'hotel' || it.type === 'museum' || it.type === 'event')));
+  const docs = byOrder(items.filter(it => it.type === 'doc'));
+  // swipe right = delete (with confirmation), long-press + drag = move
   const card = it => {
     const tt = TT[it.type] || TT.note;
-    return `<div class="ticket" data-act="tr-item" data-iid="${it.id}">
+    return `<div class="swipe tk-wrap" data-swipe="titem" data-reorder="titem" data-id="${it.id}">
+      <button class="swipe-del" data-act="swipe-del" data-kind="titem" data-id="${it.id}">${ICON.trash}<span>Șterge</span></button>
+      <div class="ticket swipe-content" data-act="tr-item" data-iid="${it.id}">
       <div class="tk-top"><span class="tk-ico">${tt.icon}</span><div class="tk-main"><div class="tk-title">${esc(it.title || tt.label)}</div>
         <div class="tk-when">${it.day ? esc(cap(fLong.format(dayOf(it.day)))) : 'Fără dată'}${it.time ? ' · ' + esc(it.time) : ''}${it.endTime ? '–' + esc(it.endTime) : ''}</div></div></div>
       ${isTransport(it.type) && (it.from || it.to) ? `<div class="tk-route"><b>${esc(it.from || '—')}</b><span>→</span><b>${esc(it.to || '—')}</b></div>` : ''}
       ${it.ref ? `<div class="tk-ref"><span>Cod / loc / poartă</span><b>${esc(it.ref)}</b></div>` : ''}
       ${(it.files || []).length ? `<div class="tk-files">${it.files.map(f => `<button class="tk-file" data-act="tr-file-open" data-fid="${f.id}" data-thumb="${f.id}" data-kind="${f.type.startsWith('image/') ? 'image' : 'doc'}">${f.type.startsWith('image/') ? '' : '📄'}</button>`).join('')}</div>` : ''}
-    </div>`;
+    </div></div>`;
   };
   return `
-    ${tickets.length ? tickets.map(card).join('') : `<div class="empty"><div class="big">🎫</div><b>Niciun bilet încă</b>Adaugă zboruri, trenuri, cazări sau muzee cu codul de rezervare și o poză / PDF cu biletul — le ai aici și fără internet.</div>`}
+    <button class="btn block" data-act="tr-tickets-files">📎 Adaugă bilete din fișiere (PDF sau poze)</button>
+    <div class="ffoot">Poți alege mai multe deodată: citesc din fiecare zborul / trenul, traseul, data, orele, codul și prețul.</div>
+    ${tickets.length ? `<div class="tk-list">${tickets.map(card).join('')}</div>` : `<div class="empty"><div class="big">🎫</div><b>Niciun bilet încă</b>Adaugă zboruri, trenuri, cazări sau muzee: pune PDF-ul sau o poză cu biletul și completez singur datele din el.</div>`}
     <div class="sec-title" style="margin-top:24px">📄 Documente</div>
-    ${docs.length ? docs.map(card).join('') : '<div class="footnote" style="margin-top:0">Pașaport, buletin, asigurare, permis — pune o poză, ca să le ai la îndemână.</div>'}
+    ${docs.length ? `<div class="tk-list">${docs.map(card).join('')}</div>` : '<div class="footnote" style="margin-top:0">Pașaport, buletin, asigurare, permis — pune o poză, ca să le ai la îndemână.</div>'}
+    ${tickets.length + docs.length ? '<div class="footnote">Glisează spre dreapta ca să ștergi un bilet; ține apăsat și trage ca să-l muți.</div>' : ''}
     <button class="btn light block mt" data-act="tr-add-doc">＋ Adaugă document</button>`;
 }
 
@@ -225,15 +380,17 @@ function tripPackingHtml(e) {
   const list = (t.packing ||= []);
   const done = list.filter(p => p.done).length;
   const have = new Set(list.map(p => norm(p.title)));
-  const sugg = PACK_TEMPLATE.filter(x => !have.has(norm(x)));
+  const sugg = packTemplate().filter(x => !have.has(norm(x)));
   return `
     ${list.length ? `<div class="medtoday" style="--c:var(--orange)"><div><div class="mt-l">În bagaj</div><div class="mt-v">${done} din ${list.length}</div></div>
-      <div class="mt-bar"><span style="width:${Math.round(done / list.length * 100)}%"></span></div></div>` : ''}
+      <div class="mt-bar"><span style="width:${Math.round(done / list.length * 100)}%"></span></div></div>`
+      : `<button class="btn block" style="background:var(--orange)" data-act="tr-pack-std">🧳 Pune lista mea standard (${packTemplate().length})</button>`}
     <div class="quickadd mt" style="--c:var(--orange)">
       <button class="qa-plus" data-act="tr-pack-add" aria-label="Adaugă">${ICON.plus}</button>
-      <input id="tr-pack" type="text" placeholder="Ce iei cu tine?" autocomplete="off" enterkeyhint="done">
+      <input id="tr-pack" type="text" placeholder="Mai iei ceva pentru vacanța asta?" autocomplete="off" enterkeyhint="done">
     </div>
-    ${sugg.length ? `<div class="sl-title" style="margin:14px 4px 8px">Sugestii · atinge ca să adaugi</div>
+    <div class="qa-links"><button data-act="tr-pack-edit">✏️ Lista mea standard</button></div>
+    ${sugg.length && list.length ? `<div class="sl-title" style="margin:10px 4px 8px">Din lista standard · atinge ca să adaugi</div>
       <div class="quick wrap" style="--pink:var(--orange);padding:0">${sugg.map(x => `<button data-act="tr-pack-sugg" data-v="${esc(x)}">＋ ${esc(x)}</button>`).join('')}</div>` : ''}
     ${list.length ? `<div class="sec-title">De pus în bagaj</div><div class="group">${list.map(p => `
       <div class="row ${p.done ? 'done' : ''}" data-act="tr-pack-toggle" data-pid="${p.id}">
@@ -303,13 +460,14 @@ function tripSheetHtml(type) {
     const tt = TT[d.type] || TT.note;
     const dayOpts = [['', 'Neprogramat (idee)'], ...tripDays(t).map((x, i) => [dkey(x), `Ziua ${i + 1} · ${cap(fLong.format(x))}`])];
     const tr = isTransport(d.type);
+    const hint = TRIP_HINTS[d.type];
     return `<div class="overlay"></div><div class="panel">
       <div class="panel-head"><button data-act="sheet-close">Renunță</button><div class="t">${s.isNew ? 'Adaugă' : 'Editează'}</div>
         <button class="save" data-act="tr-save-item">Salvează</button></div>
       <div class="panel-body">
         <div class="tr-types">${TRIP_TYPES.map(([k, ic, lbl]) => `<button class="${d.type === k ? 'on' : ''}" data-act="tr-type" data-v="${k}"><span>${ic}</span>${esc(lbl.split(' (')[0].split(' / ')[0])}</button>`).join('')}</div>
         <div class="form" style="margin-top:12px">
-          <div class="field"><input type="text" id="f-title" class="titlein" data-tb="title" placeholder="${esc(tt.label)}${tr ? ' (ex: Wizz W6 3141)' : d.type === 'restaurant' ? ' (ex: Da Enzo)' : ''}" value="${esc(d.title)}"></div>
+          <div class="field"><input type="text" id="f-title" class="titlein" data-tb="title" placeholder="${esc(tt.label)}${hint ? ' (ex: ' + hint[0] + ')' : d.type === 'restaurant' ? ' (ex: Da Enzo)' : d.type === 'hotel' ? ' (ex: Hotel Artemide)' : ''}" value="${esc(d.title)}"></div>
           <div class="field"><input type="text" data-tb="notes" placeholder="Detalii (opțional)" value="${esc(d.notes || '')}"></div>
         </div>
         <div class="fhead">Când</div>
@@ -319,8 +477,8 @@ function tripSheetHtml(type) {
           <div class="field"><span class="lbl">${tr ? 'Sosire' : d.type === 'hotel' ? 'Check-out' : 'Până la'}</span><input type="time" data-tb="endTime" value="${esc(d.endTime || '')}"></div>
         </div>
         ${tr ? `<div class="fhead">Traseu</div><div class="form">
-          <div class="field"><input type="text" data-tb="from" placeholder="De la (ex: OTP București)" value="${esc(d.from || '')}"></div>
-          <div class="field"><input type="text" data-tb="to" placeholder="Până la (ex: FCO Roma)" value="${esc(d.to || '')}"></div></div>` : ''}
+          <div class="field"><input type="text" data-tb="from" placeholder="De la${hint ? ' (ex: ' + hint[1] + ')' : ''}" value="${esc(d.from || '')}"></div>
+          <div class="field"><input type="text" data-tb="to" placeholder="Până la${hint ? ' (ex: ' + hint[2] + ')' : ''}" value="${esc(d.to || '')}"></div></div>` : ''}
         ${d.type !== 'note' ? `<div class="fhead">${tr ? 'Rezervare' : 'Loc și rezervare'}</div><div class="form">
           ${!tr ? `<div class="field"><input type="text" data-tb="place" placeholder="Adresă sau loc (pentru hărți)" value="${esc(d.place || '')}"></div>` : ''}
           <div class="field"><input type="text" data-tb="ref" placeholder="Cod rezervare / loc / poartă" value="${esc(d.ref || '')}" autocapitalize="characters"></div>
@@ -339,9 +497,25 @@ function tripSheetHtml(type) {
             <button class="x" data-act="tr-file-del" data-fid="${f.id}" style="color:var(--muted);font-size:16px;width:30px">✕</button></div>`).join('')}
           <button class="linkrow" data-act="tr-file-add">📎 Adaugă bilet (poză sau PDF)</button>
         </div>
-        <div class="ffoot">Fișierele rămân pe telefon și se deschid și fără internet.</div>
+        <div class="ffoot">Pune PDF-ul sau poza biletului (poți alege mai multe): citesc din el zborul / trenul, traseul, orele, data și codul și completez câmpurile goale.</div>
         ${!s.isNew ? `<div class="form" style="margin-top:20px"><div class="field"><span class="lbl">Făcut</span>${trSw('done', d.done)}</div></div>
           <button class="btn red block mt" data-act="tr-del-item">Șterge</button>` : ''}
+      </div></div>`;
+  }
+  if (type === 'trippack') {
+    const list = packTemplate();
+    return `<div class="overlay"></div><div class="panel">
+      <div class="panel-head"><button data-act="sheet-close">Gata</button><div class="t">Lista mea standard</div><span style="min-width:70px"></span></div>
+      <div class="panel-body">
+        <div class="ffoot" style="margin-top:0">Fiecare vacanță nouă primește automat lista asta. Ține apăsat ☰ și trage ca să schimbi ordinea.</div>
+        <div class="form sublist">${list.map((x, i) => `<div class="subedit" data-row="${i}">
+          <span style="width:20px;text-align:center">🧳</span>
+          <input type="text" value="${esc(x)}" data-tb="pk:${i}">
+          <button class="x" data-act="tr-pk-del" data-i="${i}" aria-label="Șterge">✕</button>
+          <span class="handle" data-drag="${i}">${ICON.grip}</span></div>`).join('')}</div>
+        <div class="form"><div class="subedit"><span style="color:var(--orange);font-size:22px;width:20px;text-align:center">+</span>
+          <input type="text" id="tr-pk-new" placeholder="Adaugă în lista standard" enterkeyhint="next"></div></div>
+        <button class="btn light block mt" data-act="tr-pk-reset">Revino la lista inițială</button>
       </div></div>`;
   }
   if (type === 'tripfile') {
@@ -386,20 +560,58 @@ function saveTripItem() {
   else items.push({ id: uid(), createdAt: Date.now(), ...data });
   save(); closeSheet(); toast('Salvat ✓');
 }
-async function addTripFiles() {
+function pickFiles(cb) {
   const inp = document.createElement('input');
   inp.type = 'file'; inp.accept = 'image/*,application/pdf'; inp.multiple = true;
-  inp.onchange = async () => {
-    for (const f of inp.files) {
-      if (f.size > 25 * 1024 * 1024) { toast('Fișierul e prea mare (max 25 MB)'); continue; }
-      const id = 'f' + uid();
-      try { await filePut(id, f); } catch (err) { toast('Nu am putut salva fișierul'); continue; }
-      (ui.sheet.d.files ||= []).push({ id, name: f.name || 'bilet', type: f.type || 'application/octet-stream' });
-    }
-    try { navigator.storage?.persist?.(); } catch (err) { /* ignore */ }
-    renderSheet();
-  };
+  inp.onchange = () => cb([...inp.files]);
   inp.click();
+}
+async function storeFile(f) {
+  if (f.size > 25 * 1024 * 1024) { toast('Fișierul e prea mare (max 25 MB)'); return null; }
+  const id = 'f' + uid();
+  try { await filePut(id, f); } catch (err) { toast('Nu am putut salva fișierul'); return null; }
+  try { navigator.storage?.persist?.(); } catch (err) { /* ignore */ }
+  return { id, name: f.name || 'bilet', type: f.type || 'application/octet-stream' };
+}
+// inside the item editor: attach one or more files and fill the empty fields from the first ticket
+function addTripFiles() {
+  pickFiles(async files => {
+    const s = ui.sheet;
+    let filled = [];
+    for (const f of files) {
+      const meta = await storeFile(f);
+      if (!meta) continue;
+      (s.d.files ||= []).push(meta);
+      renderSheet();
+      if (!filled.length) {
+        toast('Citesc biletul…');
+        try { filled = applyTicket(s.d, parseTicket(await ticketText(f), entryById(s.tripId).trip)); } catch (err) { /* no text found */ }
+      }
+    }
+    if (ui.sheet === s) renderSheet();
+    toast(filled.length ? `Am completat: ${filled.join(', ')}` : 'Am salvat biletul (n-am găsit date de citit)');
+  });
+}
+// in "Bilete": each chosen file becomes a ticket, filled from what's written on it
+function addTicketsFromFiles(tripId) {
+  pickFiles(async files => {
+    const e = entryById(tripId);
+    if (!e) return;
+    let n = 0;
+    toast(files.length > 1 ? `Citesc ${files.length} bilete…` : 'Citesc biletul…');
+    for (const f of files) {
+      const meta = await storeFile(f);
+      if (!meta) continue;
+      const d = { type: 'event', title: '', notes: '', day: '', time: '', endTime: '', from: '', to: '', place: '', ref: '', costText: '', currency: e.trip.currency || 'EUR' };
+      try { applyTicket(d, parseTicket(await ticketText(f), e.trip)); } catch (err) { /* keep the file anyway */ }
+      tripItems(e.trip).push({ id: uid(), createdAt: Date.now(), type: d.type, title: d.title || (f.name || 'Bilet').replace(/\.[a-z0-9]+$/i, ''),
+        notes: '', day: d.day, time: d.time, endTime: d.endTime, from: d.from, to: d.to, place: '', ref: d.ref,
+        cost: parseAmount(d.costText), currency: d.currency, paid: !!parseAmount(d.costText), files: [meta], done: false });
+      n++;
+      save(); render();
+    }
+    toast(n ? `Am adăugat ${n === 1 ? 'biletul' : n + ' bilete'} — apasă pe ${n === 1 ? 'el' : 'ele'} ca să verifici datele` : 'Nu am putut adăuga biletele');
+  });
 }
 async function openTripFile(fid) {
   const back = ui.sheet;
@@ -426,8 +638,7 @@ function tripClick(act, el) {
     case 'tr-view': ui.trip.view = el.dataset.v; render(); break;
     case 'tr-menu': openActions(cur?.trip.dest || '', [
       { label: '✏️ Editează vacanța', run: () => openTripEditor(cur.cat, cur.id) },
-      { label: '🧳 Pune lista de bagaj obișnuită', run: () => { const p = (cur.trip.packing ||= []); const have = new Set(p.map(x => norm(x.title)));
-        PACK_TEMPLATE.forEach(x => { if (!have.has(norm(x))) p.push({ id: uid(), title: x, done: false }); }); save(); ui.trip.view = 'bagaj'; render(); } },
+      { label: '🧳 Pune lista mea standard la bagaj', run: () => { addStandardPacking(cur); ui.trip.view = 'bagaj'; render(); } },
       { label: '🗑 Șterge vacanța', danger: true, run: () => confirmDeleteTrip(cur.id) },
     ]); break;
     case 'tr-emoji': s.d.emoji = el.dataset.v; renderSheet(); break;
@@ -438,7 +649,8 @@ function tripClick(act, el) {
       let e = s.tripId ? entryById(s.tripId) : null;
       if (!e) {
         e = { id: uid(), createdAt: Date.now(), cat: s.catId, title: d.dest.trim(), details: '', group: '', done: false, hasDeadline: false, hasReminder: false,
-          hasAmount: false, amount: 0, currency: 'RON', subs: [], vendor: '', tracking: '', priority: 0, repeat: 'none', trip: { items: [], packing: [] } };
+          hasAmount: false, amount: 0, currency: 'RON', subs: [], vendor: '', tracking: '', priority: 0, repeat: 'none',
+          trip: { items: [], packing: packFromTemplate() } };   // every new trip starts with the standard packing list
         db.entries.push(e);
       }
       Object.assign(e.trip, { dest: d.dest.trim(), emoji: d.emoji, start: d.start, end: d.end, currency: d.currency, notes: d.notes });
@@ -456,6 +668,7 @@ function tripClick(act, el) {
     case 'tr-del-item': openActions(`Ștergi „${s.d.title || 'elementul'}”?`, [{ label: '🗑 Șterge', danger: true, run: () => {
       const e = entryById(s.tripId); e.trip.items = tripItems(e.trip).filter(x => x.id !== s.d.id); (s.d.files || []).forEach(f => fileDel(f.id).catch(() => {})); save(); render(); toast('Șters'); } }]); break;
     case 'tr-file-add': addTripFiles(); break;
+    case 'tr-tickets-files': addTicketsFromFiles(cur.id); break;
     case 'tr-file-open': openTripFile(el.dataset.fid); break;
     case 'tr-file-del': s.d.files = (s.d.files || []).filter(f => f.id !== el.dataset.fid); fileDel(el.dataset.fid).catch(() => {}); renderSheet(); break;
     case 'tr-idea-type': ui.trip.ideaType = el.dataset.v; render(); document.getElementById('tr-idea')?.focus(); break;
@@ -464,6 +677,11 @@ function tripClick(act, el) {
     case 'tr-pack-sugg': addPack(el.dataset.v); break;
     case 'tr-pack-toggle': { const p = (cur.trip.packing || []).find(x => x.id === el.dataset.pid); if (p) { p.done = !p.done; save(); render(); } break; }
     case 'tr-pack-del': cur.trip.packing = (cur.trip.packing || []).filter(x => x.id !== el.dataset.pid); save(); render(); break;
+    case 'tr-pack-std': addStandardPacking(cur); render(); break;
+    case 'tr-pack-edit': ui.sheet = { type: 'trippack' }; renderSheet(); break;
+    case 'tr-pk-del': packTemplate().splice(+el.dataset.i, 1); save(); renderSheet(); break;
+    case 'tr-pk-reset': openActions('Revii la lista inițială de bagaj? Modificările tale din lista standard se pierd.', [{ label: 'Revino la lista inițială', danger: true,
+      run: () => { db.settings.packTemplate = [...PACK_DEFAULT]; save(); ui.sheet = { type: 'trippack' }; renderSheet(); } }]); break;
   }
 }
 function addIdea() {
@@ -482,6 +700,27 @@ function addPack(text) {
   if (!p.some(x => norm(x.title) === norm(title))) p.push({ id: uid(), title, done: false });
   save(); render(); document.getElementById('tr-pack')?.focus();
 }
+// delete one item of a trip (ticket, activity…) after asking
+function confirmDeleteTripItem(iid) {
+  const e = tripOfItem(iid);
+  const it = e && tripItems(e.trip).find(x => x.id === iid);
+  if (!it) return;
+  openActions(`Ștergi „${it.title || 'elementul'}”${(it.files || []).length ? ' și fișierele lui' : ''}? Nu se poate anula.`, [{ label: '🗑 Șterge', danger: true, run: () => {
+    e.trip.items = tripItems(e.trip).filter(x => x.id !== iid);
+    (it.files || []).forEach(f => fileDel(f.id).catch(() => {}));
+    save(); render(); toast('Șters');
+  } }]);
+}
+function reorderTripItems(ids) {
+  ids.forEach((iid, i) => { const e = tripOfItem(iid); const it = e && tripItems(e.trip).find(x => x.id === iid); if (it) it.tpos = i; });
+  save();
+}
+function addStandardPacking(cur) {
+  const p = (cur.trip.packing ||= []);
+  const have = new Set(p.map(x => norm(x.title)));
+  packTemplate().forEach(x => { if (!have.has(norm(x))) p.push({ id: uid(), title: x, done: false }); });
+  save();
+}
 function confirmDeleteTrip(id) {
   const e = entryById(id);
   if (!e) return;
@@ -493,8 +732,13 @@ function confirmDeleteTrip(id) {
 // form fields of the trip sheets (data-tb)
 function tripBind(t, isChange) {
   const s = ui.sheet;
-  if (!s || !s.d) return false;
   const k = t.dataset.tb;
+  if (k.startsWith('pk:')) {   // standard packing list: rename an item
+    const i = +k.slice(3), v = t.value.trim();
+    if (v) { packTemplate()[i] = v; save(); }
+    return true;
+  }
+  if (!s || !s.d) return false;
   s.d[k] = t.type === 'checkbox' ? t.checked : t.value;
   if (k === 'dest' || k === 'title') { const b = document.querySelector('.panel-head .save'); if (b && k === 'dest') b.disabled = !t.value.trim(); }
   if (isChange && (t.type === 'checkbox' || t.tagName === 'SELECT') && k !== 'currency') renderSheet();
@@ -504,5 +748,12 @@ function tripKey(ev) {
   if (ev.key !== 'Enter') return false;
   if (ev.target.id === 'tr-idea') { ev.preventDefault(); addIdea(); return true; }
   if (ev.target.id === 'tr-pack') { ev.preventDefault(); addPack(ev.target.value); return true; }
+  if (ev.target.id === 'tr-pk-new') {
+    ev.preventDefault();
+    const v = ev.target.value.trim();
+    if (v && !packTemplate().some(x => norm(x) === norm(v))) { packTemplate().push(v); save(); }
+    renderSheet(); setTimeout(() => document.getElementById('tr-pk-new')?.focus(), 0);
+    return true;
+  }
   return false;
 }

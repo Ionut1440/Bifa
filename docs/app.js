@@ -2872,7 +2872,7 @@ function setBound(b, value, rerender) {
 let drag = null;
 document.addEventListener('pointerdown', ev => {
   const h = ev.target.closest('[data-drag]');
-  if (!h || ui.sheet?.type !== 'entry') return;
+  if (!h || !['entry', 'trippack'].includes(ui.sheet?.type)) return;
   ev.preventDefault();
   document.activeElement?.blur?.();
   const rows = [...document.querySelectorAll('.sublist .subedit')];
@@ -2906,10 +2906,12 @@ function endDrag() {
   if (!drag) return;
   const { from, to } = drag;
   drag = null;
-  const subs = ui.sheet?.d?.subs;
+  const isPack = ui.sheet?.type === 'trippack';
+  const subs = isPack ? packTemplate() : ui.sheet?.d?.subs;
   if (subs && from !== to) {
     const [moved] = subs.splice(from, 1);
     subs.splice(to, 0, moved);
+    if (isPack) save();
     try { navigator.vibrate?.(10); } catch (e) { /* ignore */ }
   }
   renderSheet();
@@ -3011,6 +3013,7 @@ document.addEventListener('click', ev => {
 }, true);
 function confirmSwipeDelete(kind, id) {
   if (kind === 'trip' && typeof confirmDeleteTrip === 'function') { confirmDeleteTrip(id); return; }
+  if (kind === 'titem' && typeof confirmDeleteTripItem === 'function') { confirmDeleteTripItem(id); return; }
   if (kind === 'cat') {
     const c = catById(id);
     if (!c) return;
@@ -3090,7 +3093,9 @@ function endLongDrag() {
   const newIds = [...oldIds];
   const [moved] = newIds.splice(from, 1);
   newIds.splice(to, 0, moved);
-  if (wrap.dataset.reorder === 'shop') {
+  if (wrap.dataset.reorder === 'titem' && typeof reorderTripItems === 'function') {
+    reorderTripItems(newIds);   // tickets: your own order
+  } else if (wrap.dataset.reorder === 'shop') {
     // shopping: the new order inside this aisle
     newIds.forEach((eid, i) => { const e = entryById(eid); if (e) e.pos = i; });
   } else if (wrap.dataset.reorder === 'cat') {
