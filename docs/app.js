@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-235930';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261111-000043';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -3270,7 +3270,11 @@ document.addEventListener('click', ev => {
     case 'theme': applyTheme(el.dataset.v); render(); break;
     case 'icon-style': {
       (db.settings ||= {}).iconStyle = el.dataset.v; save();
-      document.getElementById('tabbar').innerHTML = '';   // rebuild the bottom bar with the new icons
+      // swap only the drawings in the bottom bar, in place: the bubble stays where it is (no slide from the left)
+      document.querySelectorAll('#tabbar button[data-tab]').forEach(b => {
+        const old = b.querySelector('svg');
+        if (old) old.outerHTML = tabIconHtml(b.dataset.tab);
+      });
       render();
       break;
     }
