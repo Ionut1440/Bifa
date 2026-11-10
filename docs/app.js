@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-213232';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-220824';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -26,8 +26,8 @@ const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); r
 const atTime = (d, h, m) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m);
 const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
-const fDayShort = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'short' });
-const fDayYear = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'short', year: 'numeric' });
+const fDayShort = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'long' });
+const fDayYear = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'long', year: 'numeric' });
 const fTime = new Intl.DateTimeFormat('ro-RO', { hour: '2-digit', minute: '2-digit' });
 const fLong = new Intl.DateTimeFormat('ro-RO', { weekday: 'long', day: 'numeric', month: 'long' });
 const fNum = new Intl.NumberFormat('ro-RO', { maximumFractionDigits: 2 });
@@ -104,7 +104,7 @@ function templateRules(t) {
   const r = baseRules();
   const set = o => Object.assign(r, o);
   if (t === 'task') set({ usesPriority: true, usesGroups: true, usesSubs: true, subsLabel: 'Pași', doneLabel: 'Făcut', placeholder: 'Ce ai de făcut?' });
-  if (t === 'order') set({ deadlineLabel: 'Livrare estimată', deadlineTime: false, usesAmount: true, usesPaid: true, usesVendor: true, vendorLabel: 'Magazin / curier', usesTracking: true, trackingLabel: 'AWB / nr. comandă', usesSubs: true, subsLabel: 'Produse', doneLabel: 'Primită', placeholder: 'Ce ai comandat? (ex: eMAG, Zara)' });
+  if (t === 'order') set({ deadlineLabel: 'Livrare estimată', deadlineTime: false, usesAmount: true, usesPaid: true, usesVendor: true, vendorLabel: 'Magazin / curier', usesTracking: true, trackingLabel: 'AWB / număr comandă', usesSubs: true, subsLabel: 'Produse', doneLabel: 'Primită', placeholder: 'Ce ai comandat?' });
   if (t === 'payment') set({ deadlineLabel: 'Scadență', deadlineTime: false, usesAmount: true, usesDir: true, usesVendor: true, vendorLabel: 'Către / de la cine', autoRem: true, doneLabel: 'Achitată', placeholder: 'Pentru ce e plata?' });
   if (t === 'note') set({ usesGroups: true, groupMode: 'group', placeholder: 'Titlu notiță' });
   if (t === 'reminder') set({ usesDeadline: false, reminderMode: 'always', doneLabel: 'Gata', placeholder: 'Ce să-ți amintesc?' });
@@ -127,7 +127,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw);
-      if (d && Array.isArray(d.categories) && Array.isArray(d.entries)) return addTripsListOnce(addAppListsOnce(addShoppingListOnce(addMedsListOnce(d))));
+      if (d && Array.isArray(d.categories) && Array.isArray(d.entries)) return shortenHints(d) && addTripsListOnce(addAppListsOnce(addShoppingListOnce(addMedsListOnce(d))));
     }
   } catch (e) { /* ignore */ }
   const d = { v: 1, categories: [], entries: [], medsAdded: true, shopAdded: true, appsAdded: true, tripsAdded: true };
@@ -148,7 +148,8 @@ function aisles() {
   const other = base.pop();
   return [...base, ...mine.filter(m => !base.some(b => normText(b[0]) === normText(m[0]))), other];
 }
-const AISLE_ICONS = ['🏷️', '🌱', '🥫', '🧀', '🍷', '🍺', '🥩', '🐟', '🍞', '🍬', '🧃', '🥚', '🍝', '🧴', '🧹', '🎁', '🐶', '💡', '🌸', '🛠️'];
+// 30 icons = 5 full rows of 6 (no half-empty last row)
+const AISLE_ICONS = ['🏷️', '🌱', '🥦', '🍎', '🥖', '🧀', '🥚', '🥩', '🍗', '🐟', '🥫', '🍝', '🍚', '🧂', '🍫', '🍬', '🍪', '🥜', '🧃', '🍷', '🍺', '☕', '🧊', '🧴', '🧻', '🧹', '🐶', '👶', '🎁', '🛠️'];
 function builtinAisles() {
   return [
     ['Fructe și legume', '🥦', 'mere mar banane banana portocal lamai lamaie lime mandarin grepfrut struguri capsuni afine zmeura pere para kiwi ananas pepene piersic nectarin caise cirese visine prune avocado mango rodie rosii rosie cherry castrav ardei ceapa usturoi cartof morcov varza salata spanac broccoli brocoli conopid dovlec vinete ciuperci patrunjel marar leustean telina ridichi sfecla ghimbir rucola verdeata fructe legume lamaita praz'],
@@ -301,6 +302,12 @@ function addMedsListOnce(d) {
     d.medsAdded = true;
     try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* ignore */ }
   }
+  return d;
+}
+// old long hints saved inside existing lists → the short ones
+function shortenHints(d) {
+  const map = { 'Ce ai comandat? (ex: eMAG, Zara)': 'Ce ai comandat?' };
+  (d.categories || []).forEach(c => { if (map[c.placeholder]) c.placeholder = map[c.placeholder]; });
   return d;
 }
 function save() {
@@ -527,11 +534,43 @@ function toggleSub(e, sid) {
   delete e._autoBy;
   save();
 }
-function deleteEntry(id) {
-  const e = entryById(id);
-  db.entries = db.entries.filter(x => x.id !== id);
+// deleting never loses anything at once: items go to "Șterse recent" for 30 days (Setări), where they can be restored
+const TRASH_DAYS = 30;
+function deleteEntries(ids) {
+  const set = new Set(ids);
+  const gone = db.entries.filter(e => set.has(e.id));
+  if (!gone.length) return;
+  db.entries = db.entries.filter(e => !set.has(e.id));
+  const now = Date.now();
+  db.trash = [...gone.map(e => ({ ...e, deletedAt: now, catName: catById(e.cat)?.name || '' })), ...(db.trash || [])]
+    .filter(e => now - e.deletedAt < TRASH_DAYS * 86400000).slice(0, 400);
   save();
-  if (e && alarmUpcoming(e)) setTimeout(() => calendarLeftover([e]), 350);
+  const withAlarm = gone.filter(alarmUpcoming);
+  if (withAlarm.length) setTimeout(() => calendarLeftover(withAlarm), 350);
+}
+function deleteEntry(id) { deleteEntries([id]); }
+function restoreEntry(id) {
+  const i = (db.trash || []).findIndex(e => e.id === id);
+  if (i < 0) return;
+  const e = { ...db.trash[i] };
+  let c = catById(e.cat) || db.categories.find(x => x.name === e.catName);
+  if (!c) { toast(`Lista „${e.catName}” nu mai există`); return; }
+  e.cat = c.id; delete e.deletedAt; delete e.catName;
+  db.trash.splice(i, 1);
+  db.entries.push(e);
+  save(); toast(`„${e.title}” a revenit în ${c.name}`);
+}
+function trashSheetHtml() {
+  const now = Date.now();
+  const list = (db.trash || []).filter(e => now - e.deletedAt < TRASH_DAYS * 86400000);
+  return `<div class="overlay"></div><div class="panel">
+    <div class="panel-head"><button data-act="sheet-close">Închide</button><div class="t">Șterse recent</div><span style="min-width:70px"></span></div>
+    <div class="panel-body">
+      ${list.length ? `<div class="form">${list.map(e => `<div class="field trashrow">
+          <div class="lbl"><b>${esc(e.title)}</b><small>${esc(e.catName || '')} · ${esc(fmtDayTime(new Date(e.deletedAt)))}</small></div>
+          <button class="restore" data-act="trash-restore" data-v="${e.id}">Recuperează</button></div>`).join('')}</div>
+        <button class="btn light block mt wipe" data-act="trash-empty">Golește definitiv</button>` : '<div class="empty"><div class="big">🗑️</div><b>Nimic șters</b></div>'}
+    </div></div>`;
 }
 // an alarm that would still ring (a past one-time alarm is harmless and not worth a message)
 const alarmUpcoming = e => alarmAdded(e) && (e.med ? (typeof medStatus !== 'function' || medStatus(e).state !== 'finished')
@@ -558,9 +597,8 @@ function cleanup() {
   let changed = false;
   for (const c of db.categories) {
     if (!c.autoDelete) continue;
-    const before = db.entries.length;
-    db.entries = db.entries.filter(e => !(e.cat === c.id && e.done && now - (e.doneAt || e.createdAt) > c.autoDelete * 86400000));
-    if (db.entries.length !== before) changed = true;
+    const old = db.entries.filter(e => e.cat === c.id && e.done && now - (e.doneAt || e.createdAt) > c.autoDelete * 86400000);
+    if (old.length) { deleteEntries(old.map(e => e.id)); changed = true; }   // → "Șterse recent", never silently lost
   }
   if (changed) save();
 }
@@ -594,6 +632,7 @@ function buildIcs(e) {
     out.push('BEGIN:VEVENT',
       `UID:${e.id}${e.repeat === 'dates' ? '-' + icsDate(s) : ''}@bifa`,
       `DTSTAMP:${stamp}`,
+      `SEQUENCE:${e.alarmSeq || 0}`,
       `DTSTART:${icsDate(s)}`,
       `DTEND:${icsDate(new Date(s.getTime() + 15 * 60000))}`,
       `SUMMARY:${icsEscape('🔔 ' + e.title)}`,
@@ -606,6 +645,7 @@ function buildIcs(e) {
 }
 async function addAlarm(e) {
   if (!e.med && (!e.hasReminder || !e.reminder)) return;
+  e.alarmSeq = (e.alarmSeq || 0) + (e.alarmFor ? 1 : 0);
   const ics = e.med ? buildMedIcs(e) : buildIcs(e);
   e.alarmFor = alarmKey(e);
   save();
@@ -750,6 +790,20 @@ const tile = (label, value, color, f) => f
   ? `<button class="tile" style="--tc:${color}" data-act="tile-filter" data-f="${f}"><div class="tl">${esc(label)}</div><div class="tv">${esc(value)}</div></button>`
   : `<div class="tile" style="--tc:${color}"><div class="tl">${esc(label)}</div><div class="tv">${esc(value)}</div></div>`;
 
+// a tile that works as a filter: tap = show only those, tap again = back to everything (the active one is more coloured)
+const ttile = (label, value, color, act, key, on) =>
+  `<button class="tile tog ${on ? 'on' : ''}" style="--tc:${color}" data-act="${act}" data-k="${key}"><div class="tl">${esc(label)}</div><div class="tv">${esc(value)}</div></button>`;
+// list tiles → which items they keep
+const TILE_FILTERS = {
+  active: e => !e.done,
+  overdue: e => !e.done && isOverdue(e),
+  topay: e => !e.done && e.hasAmount && e.dir !== 'in',
+  toreceive: e => !e.done && e.hasAmount && e.dir === 'in',
+  unpaid: e => e.hasAmount && !e.paid,
+  total: e => !e.done && e.hasAmount,
+  scheduled: e => !e.done && e.hasReminder && !reminderMissed(e),
+};
+
 // ---------- screens ----------
 function screenToday() {
   const today = startOfDay(new Date());
@@ -767,6 +821,7 @@ function screenToday() {
     else if (d && d < weekEnd) wk.push(e);
   }
   // medicine doses count too: past their hour today (or forgotten on earlier days) = late; still to come today = today
+  const f = ui.todayF || null;
   const nowD = new Date(), dToday = dosesOn(nowD);
   const nLate = ov.length + dToday.filter(x => doseLate(x, nowD)).length + missedDoses().length;
   const dosesAhead = dToday.filter(x => !x.taken && !doseLate(x, nowD)).length;
@@ -776,21 +831,26 @@ function screenToday() {
     ${mainHead(cap(fLong.format(new Date())), `<button class="iconbtn fill" data-act="new-pick">${ICON.plus}</button>`)}
     ${install}
     <div class="tiles three">
-      ${tile('Întârziate', nLate, nLate ? 'var(--red)' : 'var(--muted)')}
-      ${tile('Azi', td.length + dosesAhead, 'var(--orange)')}
-      ${tile('7 zile', wk.length, 'var(--blue)')}
+      ${ttile('Întârziate', nLate, nLate ? 'var(--red)' : 'var(--muted)', 'today-f', 'late', ui.todayF === 'late')}
+      ${ttile('Azi', td.length + dosesAhead, 'var(--orange)', 'today-f', 'today', ui.todayF === 'today')}
+      ${ttile('7 zile', wk.length, 'var(--blue)', 'today-f', 'week', ui.todayF === 'week')}
     </div>
     ${!ov.length && !td.length && !wk.length && !dosesOn(new Date()).length ? `<div class="empty"><div class="big">☀️</div><b>Ziua e liberă</b></div>` : ''}
-    ${missedDosesHtml()}
-    ${typeof tripTodayHtml === 'function' ? tripTodayHtml() : ''}
-    ${medsTodayHtml()}
-    ${sec('Întârziate', ov, 'red')}
-    ${sec('Azi', td, 'orange')}
-    ${sec('Următoarele 7 zile', wk, '')}`;
+    ${!f || f === 'late' ? missedDosesHtml() : ''}
+    ${!f && typeof tripTodayHtml === 'function' ? tripTodayHtml() : ''}
+    ${medsTodayHtml(f)}
+    ${!f || f === 'late' ? sec('Întârziate', ov, 'red') : ''}
+    ${!f || f === 'today' ? sec('Azi', td, 'orange') : ''}
+    ${!f || f === 'week' ? sec('Următoarele 7 zile', wk, '') : ''}
+    ${f && !(f === 'late' ? nLate : f === 'today' ? td.length + dosesAhead : wk.length) ? '<div class="empty"><b>Nimic aici</b></div>' : ''}`;
 }
 
-function medsTodayHtml() {
-  const doses = dosesOn(new Date());
+function medsTodayHtml(f) {
+  const now = new Date();
+  let doses = dosesOn(now);
+  if (f === 'late') doses = doses.filter(x => doseLate(x, now));
+  else if (f === 'today') doses = doses.filter(x => !x.taken && !doseLate(x, now));
+  else if (f === 'week') doses = [];
   if (!doses.length) return '';
   const taken = doses.filter(x => x.taken).length;
   return `<div class="sec-title" style="color:var(--text);font-size:15px;text-transform:none;margin-top:24px">💊 Medicamente azi · ${taken} din ${doses.length} luate</div>
@@ -917,6 +977,7 @@ function screenSettings() {
     <div class="group setgroup">
       ${row('⬇️', 'Salvează o copie (backup)', chev, 'export')}
       ${row('⬆️', 'Încarcă dintr-un backup', chev, 'import')}
+      ${row('🗑️', 'Șterse recent', `${(db.trash || []).length ? `<span class="setval">${db.trash.length}</span>` : ''}${chev}`, 'trash-open')}
       ${row('💾', 'Spațiu folosit', `<span class="setval">${storageUsed()}</span>`)}
       ${row('🗂️', 'Conținut', `<span class="setval">${nLists} ${nLists === 1 ? 'listă' : 'liste'} · ${nItems} ${nItems === 1 ? 'element' : 'elemente'}</span>`)}
     </div>
@@ -959,8 +1020,11 @@ function categoryVisible(c) {
   const q = ui.search.trim().toLowerCase();
   return db.entries.filter(e => {
     if (e.cat !== c.id) return false;
-    if (ui.filter === 'active' && settledDone(e)) return false;
-    if (ui.filter === 'done' && !e.done) return false;
+    if (ui.tileF && TILE_FILTERS[ui.tileF]) { if (!TILE_FILTERS[ui.tileF](e)) return false; }
+    else {
+      if (ui.filter === 'active' && settledDone(e)) return false;
+      if (ui.filter === 'done' && !e.done) return false;
+    }
     if (!q) return true;
     return [e.title, e.details, e.vendor, e.group, e.tracking, ...(e.subs || []).map(s => s.title)]
       .some(t => (t || '').toLowerCase().includes(q));
@@ -985,17 +1049,18 @@ function screenCategory(c) {
   const all = db.entries.filter(e => e.cat === c.id);
   const active = all.filter(e => !e.done);
   const col = colorOf(c);
-  const tiles = [tile('Active', active.length, col)];
-  if (c.usesDeadline) { const o = active.filter(isOverdue).length; tiles.push(tile('Întârziate', o, o ? 'var(--red)' : 'var(--muted)')); }
+  const T = (label, value, color, key) => ttile(label, value, color, 'list-f', key, ui.tileF === key);
+  const tiles = [T('Active', active.length, col, 'active')];
+  if (c.usesDeadline) { const o = active.filter(isOverdue).length; tiles.push(T('Întârziate', o, o ? 'var(--red)' : 'var(--muted)', 'overdue')); }
   if (c.usesAmount) {
     const pairs = l => l.filter(e => e.hasAmount).map(e => [e.amount, e.currency]);
     if (c.usesDir) {
-      tiles.push(tile('De plătit', totals(pairs(active.filter(e => e.dir !== 'in'))), 'var(--red)'));
-      tiles.push(tile('De primit', totals(pairs(active.filter(e => e.dir === 'in'))), 'var(--green)'));
-    } else if (c.usesPaid) tiles.push(tile('Neplătit', totals(pairs(all.filter(e => !e.paid))), 'var(--red)'));
-    else tiles.push(tile('Total', totals(pairs(active)), 'var(--blue)'));
+      tiles.push(T('De plătit', totals(pairs(active.filter(e => e.dir !== 'in'))), 'var(--red)', 'topay'));
+      tiles.push(T('De primit', totals(pairs(active.filter(e => e.dir === 'in'))), 'var(--green)', 'toreceive'));
+    } else if (c.usesPaid) tiles.push(T('Neplătit', totals(pairs(all.filter(e => !e.paid))), 'var(--red)', 'unpaid'));
+    else tiles.push(T('Total', totals(pairs(active)), 'var(--blue)', 'total'));
   }
-  if (!c.usesDeadline && c.reminderMode !== 'off') tiles.push(tile('Programate', active.filter(e => e.hasReminder && !reminderMissed(e)).length, 'var(--pink)'));
+  if (!c.usesDeadline && c.reminderMode !== 'off') tiles.push(T('Programate', active.filter(e => e.hasReminder && !reminderMissed(e)).length, 'var(--pink)', 'scheduled'));
   const showTiles = c.summary && all.length;
   return `
     <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
@@ -1006,7 +1071,9 @@ function screenCategory(c) {
     ${showTiles ? `<div class="tiles">${tiles.join('')}</div>` : ''}
     <div class="seg">${['active', 'done', 'all'].map(f => `<button class="${ui.filter === f ? 'on' : ''}" data-act="filter" data-f="${f}">${{ active: 'Active', done: 'Bifate', all: 'Toate' }[f]}</button>`).join('')}</div>
     <input class="search" type="search" id="search" placeholder="Caută în ${esc(c.name)}" value="${esc(ui.search)}">
-    <div id="catlist">${categoryListHtml(c)}</div>`;
+    <div id="catlist">${categoryListHtml(c)}</div>
+    ${!ui.tileF && ui.filter === 'done' && all.some(e => e.done) ? `<button class="btn light block mt wipe" data-act="list-wipe" data-v="done" data-id="${c.id}">Șterge bifatele</button>` : ''}
+    ${!ui.tileF && ui.filter === 'all' && all.length ? `<button class="btn light block mt wipe" data-act="list-wipe" data-v="all" data-id="${c.id}">Șterge tot din listă</button>` : ''}`;
 }
 
 function screenReminders() {
@@ -1461,7 +1528,7 @@ function entrySheetHtml() {
         h += `<div class="fieldcol"><div class="lbl" style="font-size:14px;color:var(--muted);margin-bottom:6px">Se oprește</div>
           <div class="segin" style="margin:0">
             <button class="${d.repEnd === 'never' ? 'on' : ''}" data-act="r-end" data-v="never">Niciodată</button>
-            <button class="${d.repEnd === 'count' ? 'on' : ''}" data-act="r-end" data-v="count">După nr. de ori</button>
+            <button class="${d.repEnd === 'count' ? 'on' : ''}" data-act="r-end" data-v="count">După un număr de ori</button>
             <button class="${d.repEnd === 'until' ? 'on' : ''}" data-act="r-end" data-v="until">La o dată</button></div></div>`;
         if (d.repEnd === 'count') {
           h += `<div class="field"><span class="lbl">De ${d.repCount} ${+d.repCount === 1 ? 'dată' : 'ori'}</span>
@@ -1518,7 +1585,7 @@ function entrySheetHtml() {
       if (d.hasAmount || !c.usesPaid) {
         h += `<div class="field"><input type="text" inputmode="decimal" class="amountin" data-bind="amountText" placeholder="Sumă" value="${esc(d.amountText)}">
           <select data-bind="currency" style="max-width:90px">${CURRENCIES.map(x => `<option ${x === d.currency ? 'selected' : ''}>${x}</option>`).join('')}</select></div>`;
-        if (c.usesPaid) h += `<div class="field"><span class="ico">${d.paid ? '✅' : '💵'}</span><span class="lbl">${d.paid ? 'Plătit' : 'Neplătit (ex: ramburs)'}</span>${sw('paid', d.paid)}</div>`;
+        if (c.usesPaid) h += `<div class="field"><span class="ico">${d.paid ? '✅' : '💵'}</span><span class="lbl">${d.paid ? 'Plătit' : 'Neplătit (ex. ramburs)'}</span>${sw('paid', d.paid)}</div>`;
       }
     }
     parts.push(h + `</div>`);
@@ -1527,14 +1594,14 @@ function entrySheetHtml() {
   if (isShopCat(c)) {
     // shopping: how much / how many
     parts.push(`<div class="fhead">Cantitate</div><div class="form">
-      <div class="field"><input type="text" inputmode="decimal" class="amountin" data-bind="qtyText" placeholder="ex: 2" value="${esc(d.qtyText || '')}">
-        <select data-bind="unit" style="max-width:110px">${UNITS.map(u => `<option ${u === (d.unit || 'buc') ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>`);
+      <div class="field"><input type="text" inputmode="decimal" class="amountin" data-bind="qtyText" placeholder="ex. 2" value="${esc(d.qtyText || '')}">
+        <select data-bind="unit" style="max-width:110px">${UNITS.map(u => `<option value="${u}" ${u === (d.unit || 'buc') ? 'selected' : ''}>${unitLabel(u, 2)}</option>`).join('')}</select></div></div>`);
   }
   if (c.usesPriority || c.usesGroups) {
     let h = `<div class="form" style="margin-top:18px">`;
     if (c.usesPriority) h += `<div class="field"><span class="ico">🚩</span><span class="lbl">Prioritate</span><select data-bind="priority">${PRIORITIES.map((p, i) => `<option value="${i}" ${+d.priority === i ? 'selected' : ''}>${p}</option>`).join('')}</select></div>`;
     if (c.usesGroups) {
-      h += `<div class="field"><span class="ico">📁</span><input type="text" data-bind="group" list="grouplist" placeholder="${isShopCat(c) ? 'Raion' : 'Grup (ex: Casă, Muncă)'}" value="${esc(d.group)}">
+      h += `<div class="field"><span class="ico">📁</span><input type="text" data-bind="group" list="grouplist" placeholder="${isShopCat(c) ? 'Raion' : 'Grup (ex. Casă)'}" value="${esc(d.group)}">
         <datalist id="grouplist">${groups.map(g => `<option value="${esc(g)}">`).join('')}</datalist></div>`;
       if (groups.length) h += `<div class="quick wrap" style="--pink:var(--purple)">${groups.map(g => `<button data-act="pickgroup" data-v="${esc(g)}" class="${d.group === g ? 'on' : ''}">${isShopCat(c) ? aisleIcon(g) + ' ' : ''}${esc(g)}</button>`).join('')}</div>`;
     }
@@ -1591,6 +1658,7 @@ function saveEntry(withAlarm) {
   const remOn = c.reminderMode === 'always' || (c.reminderMode === 'optional' && d.hasReminder);
   if (remOn && d.repeat === 'dates' && !d.repDates.length) { toast('Alege în calendar cel puțin o zi'); return; }
   let e = d.id ? entryById(d.id) : null;
+  const hadAlarm = !!e && alarmUpcoming(e), oldWhen = hadAlarm ? alarmDate(e) : null;
   if (!e) { e = { id: uid(), createdAt: Date.now() }; db.entries.push(e); }
   const amount = parseAmount(d.amountText);
   if (d.done !== !!e.done) e.doneAt = d.done ? Date.now() : null;
@@ -1625,9 +1693,23 @@ function saveEntry(withAlarm) {
   save();
   closeSheet();
   const needsAlarm = e.hasReminder && !e.done && !alarmAdded(e) && (e.repeat !== 'none' || parseLocal(e.reminder) > new Date());
-  if (withAlarm || needsAlarm) addAlarm(e);
+  if (needsAlarm && hadAlarm && !withAlarm) {
+    // the time changed on something that already had an alarm: one tap to put the new one in Calendar,
+    // then (when you come back) a shortcut to the old one, in case the iPhone kept both
+    openActions(`Ai schimbat ora pentru „${e.title}”. Pune alarma nouă în Calendar.`, [
+      { label: '📅 Actualizează alarma în Calendar', run: () => { pendingOldAlarm = { title: e.title, when: oldWhen }; addAlarm(e); } },
+    ]);
+  } else if (withAlarm || needsAlarm) addAlarm(e);
   else toast('Salvat ✓');
 }
+let pendingOldAlarm = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !pendingOldAlarm) return;
+  const o = pendingOldAlarm; pendingOldAlarm = null;
+  setTimeout(() => openActions(`Dacă în Calendar a rămas și alarma veche pentru „${o.title}” (${fmtDayTime(o.when)}), șterge-o: apasă pe ea → „Șterge evenimentul”.`, [
+    { label: '📅 Deschide Calendarul la ' + fmtDay(o.when).toLowerCase(), run: () => { window.location.href = 'calshow:' + Math.round((o.when.getTime() - Date.UTC(2001, 0, 1)) / 1000); } },
+  ]), 600);
+});
 
 // ---------- category editor ----------
 function openCategory(id) {
@@ -1674,7 +1756,7 @@ function categorySheetHtml() {
         ${d.usesTracking ? tx('trackingLabel', 'Se numește', 'Cod / AWB') : ''}
         ${tg('usesPriority', 'Prioritate', '🚩')}
         ${tg('usesGroups', 'Grupuri', '📁')}
-        ${tx('doneLabel', 'Cuvânt pentru bifă', 'Bifat')}
+        ${tx('doneLabel', 'Starea după bifare', 'ex. Făcut')}
       </div>
 
       <div class="fhead">Remindere</div>
@@ -1920,15 +2002,15 @@ function myProductsSheetHtml() {
     <div class="panel-body">
       <div class="fhead">Adaugă un produs</div>
       <div class="form">
-        <div class="field"><input type="text" id="mp-name" placeholder="Nume (ex: Brânză de la piață)" value="${esc(s.name || '')}" autocomplete="off"></div>
+        <div class="field"><input type="text" id="mp-name" placeholder="Nume (ex. Brânză)" value="${esc(s.name || '')}" autocomplete="off"></div>
         <div class="field"><span class="lbl">Raion</span><select id="mp-aisle">${opts(s.aisle || 'Altele')}</select></div>
       </div>
       <button class="btn block mt" data-act="mp-add">＋ Salvează produsul</button>
       <div class="fhead">Adaugă un raion</div>
       <div class="form">
-        <div class="field"><span class="ico">${s.aicon || '🏷️'}</span><input type="text" id="ma-name" placeholder="Nume (ex: Produse bio)" value="${esc(s.aname || '')}" autocomplete="off"></div>
+        <div class="field"><span class="ico">${s.aicon || '🏷️'}</span><input type="text" id="ma-name" placeholder="Nume (ex. Produse bio)" value="${esc(s.aname || '')}" autocomplete="off"></div>
       </div>
-      <div class="quick wrap" style="--pink:var(--accent);padding:8px 0 0">${AISLE_ICONS.map(ic => `<button class="${(s.aicon || '🏷️') === ic ? 'on' : ''}" data-act="ma-icon" data-v="${ic}" style="font-size:18px;padding:5px 9px">${ic}</button>`).join('')}</div>
+      <div class="icongrid">${AISLE_ICONS.map(ic => `<button class="${(s.aicon || '🏷️') === ic ? 'on' : ''}" data-act="ma-icon" data-v="${ic}">${ic}</button>`).join('')}</div>
       <button class="btn block mt" data-act="ma-add">＋ Salvează raionul</button>
       ${(db.settings?.myAisles || []).length ? `<div class="fhead">Raioanele tale · ${db.settings.myAisles.length}</div><div class="form">${db.settings.myAisles.map(a => `<div class="field">
           <span class="ico">${a.icon || '🏷️'}</span><span class="lbl">${esc(a.name)}</span>
@@ -1984,6 +2066,8 @@ function parseQty(text) {
   if (m) return { name: m[1].trim(), qty: +m[2], unit: 'buc' };
   return { name: t, qty: 0, unit: '' };
 }
+// 'buc' is stored internally, but shown in full
+const unitLabel = (u, q) => u === 'buc' ? (+q === 1 ? 'bucată' : 'bucăți') : u;
 const qtyStep = unit => (unit === 'kg' || unit === 'l') ? 0.5 : (unit === 'g' || unit === 'ml') ? 100 : 1;
 const qtyText = e => {
   const q = +e.qty || 1, u = e.unit || 'buc';
@@ -1995,7 +2079,7 @@ function shopSuggestHtml(c, q) {
   if (!full) return '';
   const pq = parseQty(full);
   const raw = pq.name;                       // match on the product, keep the quantity you typed
-  const qtyPart = pq.qty ? ` · ${fNum.format(pq.qty)}${pq.unit === 'buc' ? ' buc' : ' ' + pq.unit}` : '';
+  const qtyPart = pq.qty ? ` · ${fNum.format(pq.qty)} ${unitLabel(pq.unit, pq.qty)}` : '';
   const list = shopSuggestions(c, raw);
   const typed = raw.charAt(0).toUpperCase() + raw.slice(1);
   const exact = list.some(x => norm(x.name) === norm(raw));
@@ -2065,7 +2149,7 @@ function screenShopping(c) {
     <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
     <div class="quickadd" style="--c:${col}">
       <button class="qa-plus" data-act="qa-add" data-id="${c.id}" aria-label="Adaugă">${ICON.plus}</button>
-      <input id="quickadd" type="text" placeholder="Adaugă produs (ex: lapte Zuzu, Snickers)" autocomplete="off" autocorrect="off" enterkeyhint="done" data-cat="${c.id}">
+      <input id="quickadd" type="text" placeholder="Adaugă un produs" autocomplete="off" autocorrect="off" enterkeyhint="done" data-cat="${c.id}">
     </div>
     <div id="qasugg" class="qa-sugg"></div>
     <div class="qa-links"><button data-act="my-products">🏷️ Produsele mele${Object.keys(myProducts()).length ? ` · ${Object.keys(myProducts()).length}` : ''}</button></div>
@@ -2114,7 +2198,7 @@ function calPickerHtml(d) {
 // (a number of days, until a date, or forever). Doses taken are logged per day.
 const dkey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const dayOf = s => parseLocal((s || dkey(new Date())) + 'T00:00');
-const WD_SHORT = ['D', 'L', 'Ma', 'Mi', 'J', 'V', 'S'];
+const WD_SHORT = ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];   // full names: no abbreviations in the app
 const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const isMedCat = c => c?.kind === 'meds';
 
@@ -2395,8 +2479,8 @@ function medSheetHtml() {
     <div class="panel-body">
       <div class="form">
         <div class="field"><input type="text" id="f-title" class="titlein" data-bind="title" placeholder="Numele medicamentului" value="${esc(d.title)}" enterkeyhint="done"></div>
-        <div class="field"><input type="text" data-bind="m.dose" placeholder="Doza (ex: 1 pastilă, 500 mg, 10 picături)" value="${esc(d.dose)}"></div>
-        <div class="field"><input type="text" data-bind="details" placeholder="Notă (ex: după masă, cu apă)" value="${esc(d.details)}"></div>
+        <div class="field"><input type="text" data-bind="m.dose" placeholder="Doza (ex. 1 pastilă)" value="${esc(d.dose)}"></div>
+        <div class="field"><input type="text" data-bind="details" placeholder="Notă (ex. după masă)" value="${esc(d.details)}"></div>
       </div>
 
       <div class="fhead">La ce ore</div>
@@ -2421,7 +2505,7 @@ function medSheetHtml() {
       <div class="form">
         <div class="field"><span class="lbl">Începe</span><input type="date" data-bind="m.start" value="${esc(d.start)}"></div>
         <div class="fieldcol"><div class="segin" style="margin:0">
-          <button class="${d.durType === 'days' ? 'on' : ''}" data-act="m-dur" data-v="days">Nr. de zile</button>
+          <button class="${d.durType === 'days' ? 'on' : ''}" data-act="m-dur" data-v="days">Număr de zile</button>
           <button class="${d.durType === 'until' ? 'on' : ''}" data-act="m-dur" data-v="until">Până la</button>
           <button class="${d.durType === 'forever' ? 'on' : ''}" data-act="m-dur" data-v="forever">Permanent</button></div></div>
         ${d.durType === 'days' ? `<div class="field"><span class="lbl">${d.days} ${+d.days === 1 ? 'zi' : 'zile'}</span>
@@ -2820,15 +2904,16 @@ function moneyStatsHtml() {
 
 // ---------- action sheet ----------
 function openActions(title, actions, opts = {}) {
-  ui.sheet = { type: 'actions', title, actions, grid: !!opts.grid };
+  ui.sheet = { type: 'actions', title, actions, grid: !!opts.grid, seg: opts.seg || null };
   renderSheet();
 }
 function actionsHtml() {
-  const { title, actions, grid } = ui.sheet;
+  const { title, actions, grid, seg } = ui.sheet;
   // long lists scroll inside the sheet; "grid" = two columns of tiles (e.g. choosing a store aisle)
   return `<div class="overlay" data-act="sheet-close"></div>
     <div class="asheet">
       <div class="agroup ascroll ${grid ? 'agrid' : ''}">${title ? `<div class="atitle">${esc(title)}</div>` : ''}
+        ${seg ? `<div class="aseg"><div class="aseg-l">${esc(seg.label)}</div><div class="seg">${seg.options.map((o, i) => `<button class="${o.selected ? 'on' : ''}" data-act="aseg" data-i="${i}">${esc(o.label)}</button>`).join('')}</div></div>` : ''}
         <div class="aitems">${actions.map((a, i) => `<button class="${a.danger ? 'danger' : ''} ${a.selected ? 'sel' : ''}" data-act="action" data-i="${i}">${grid && a.icon
           ? `<span class="ag-ico">${a.icon}</span><span class="ag-lbl">${esc(a.label)}</span>` : esc(a.label)}</button>`).join('')}</div></div>
       <div class="agroup"><button class="cancel" data-act="sheet-close">Renunță</button></div></div>`;
@@ -2841,7 +2926,7 @@ function renderSheet() {
   const body = el.querySelector('.panel-body');
   const scroll = body ? body.scrollTop : 0;
   const t = ui.sheet.type;
-  el.innerHTML = t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml()
+  el.innerHTML = t === 'trash' ? trashSheetHtml() : t === 'entry' ? entrySheetHtml() : t === 'category' ? categorySheetHtml() : t === 'stats' ? statsHtml()
     : t === 'search' ? searchSheetHtml() : t === 'med' ? medSheetHtml() : t === 'myprod' ? myProductsSheetHtml()
     : t.startsWith('trip') ? tripSheetHtml(t) : actionsHtml();
   const nb = el.querySelector('.panel-body');
@@ -3079,7 +3164,7 @@ document.addEventListener('click', ev => {
     case 'set-confirm': db.settings = { ...(db.settings || {}), confirmCheck: !db.settings?.confirmCheck }; save(); render(); break;
     case 'sub': { const e = entryById(id); if (e) { toggleSub(e, el.dataset.sid); render(); } break; }
     case 'alarm': { const e = entryById(id); if (e) addAlarm(e); break; }
-    case 'open-cat': ui.trip = null; ui.catId = id; ui.filter = 'active'; ui.search = ''; render(); scroller().scrollTo(0, 0); break;
+    case 'open-cat': ui.trip = null; ui.catId = id; ui.filter = 'active'; ui.search = ''; ui.tileF = null; render(); scroller().scrollTo(0, 0); break;
     case 'back':
       if (ui.trip) { ui.trip = null; render(); scroller().scrollTo(0, 0); break; }   // from a trip back to the list of trips
       ui.catId = null; render(); scroller().scrollTo(0, 0); break;
@@ -3090,7 +3175,27 @@ document.addEventListener('click', ev => {
       else openActions('Adaugă în…', list.map(c => ({ label: `${c.icon}  ${c.name}`, run: () => openEntry(c.id) })));
       break;
     }
-    case 'filter': ui.filter = el.dataset.f; render(); break;
+    case 'filter': ui.filter = el.dataset.f; ui.tileF = null; render(); break;
+    case 'trash-open': ui.sheet = { type: 'trash' }; renderSheet(); break;
+    case 'trash-restore': restoreEntry(el.dataset.v); renderSheet(); render(); break;
+    case 'trash-empty':
+      openActions('Golești definitiv lista „Șterse recent”? Nu se poate anula.', [
+        { label: '🗑 Golește definitiv', danger: true, run: () => { db.trash = []; save(); ui.sheet = { type: 'trash' }; renderSheet(); render(); } },
+      ]);
+      break;
+    case 'list-wipe': {
+      const c = catById(id), all = el.dataset.v === 'all';
+      const list = db.entries.filter(e => e.cat === id && (all || e.done));
+      if (!c || !list.length) break;
+      const n = list.length;
+      openActions(all ? (n === 1 ? `Ștergi elementul din ${c.name}?` : `Ștergi toate cele ${n} elemente din ${c.name}?`)
+        : (n === 1 ? `Ștergi elementul bifat din ${c.name}?` : `Ștergi cele ${n} elemente bifate din ${c.name}?`), [
+        { label: all ? '🗑 Șterge tot' : '🗑 Șterge bifatele', danger: true, run: () => { deleteEntries(list.map(e => e.id)); render(); toast(n === 1 ? 'Șters' : `${n} elemente șterse`); } },
+      ]);
+      break;
+    }
+    case 'today-f': ui.todayF = ui.todayF === el.dataset.k ? null : el.dataset.k; render(); break;
+    case 'list-f': ui.tileF = ui.tileF === el.dataset.k ? null : el.dataset.k; render(); break;
     case 'reorder': ui.reorder = !ui.reorder; render(); break;
     case 'cat-up': case 'cat-down': {
       const list = cats(); const i = list.findIndex(c => c.id === id); const j = act === 'cat-up' ? i - 1 : i + 1;
@@ -3102,19 +3207,19 @@ document.addEventListener('click', ev => {
     case 'cat-menu': {
       const c = catById(id);
       const gm = Object.entries(GROUP_MODES).filter(([k]) => k !== 'group' || c.usesGroups)
-        .map(([k, v]) => ({ label: 'Grupare: ' + v.toLowerCase(), selected: c.groupMode === k, run: () => { c.groupMode = k; save(); render(); } }));
+        .map(([k, v]) => ({ label: v, selected: c.groupMode === k, run: () => { c.groupMode = k; save(); render(); } }));
       openActions(c.name, [
-        ...gm,
         ...(isShopCat(c) ? [{ label: '🏷️ Produsele mele', run: () => { ui.sheet = { type: 'myprod', name: '', aisle: 'Altele' }; renderSheet(); } }] : []),
         { label: '⚙️ Reguli listă', run: () => openCategory(c.id) },
         { label: 'Șterge bifatele', danger: true, run: () => {
           const n = db.entries.filter(e => e.cat === c.id && e.done).length;
           if (!n) { toast('Nu ai nimic bifat aici'); return; }
-          if (confirm(n === 1 ? `Ștergi elementul bifat din ${c.name}?` : `Ștergi cele ${n} elemente bifate din ${c.name}?`)) { db.entries = db.entries.filter(e => !(e.cat === c.id && e.done)); save(); render(); }
+          if (confirm(n === 1 ? `Ștergi elementul bifat din ${c.name}?` : `Ștergi cele ${n} elemente bifate din ${c.name}?`)) { deleteEntries(db.entries.filter(e => e.cat === c.id && e.done).map(e => e.id)); render(); }
         } },
-      ]);
+      ], { seg: { label: 'Grupare', options: gm } });
       break;
     }
+    case 'aseg': { const o = s?.seg?.options?.[+el.dataset.i]; if (o) { o.run(); s.seg.options.forEach(x => { x.selected = x === o; }); renderSheet(); } break; }
     case 'action': { const a = s?.actions?.[+el.dataset.i]; ui.sheet = null; renderSheet(); render(); a?.run(); break; }
     case 'sheet-close':
       if (s?.type === 'tripfile' && s.back) { ui.sheet = s.back; renderSheet(); break; }   // ticket viewer → back to the item
@@ -3172,7 +3277,7 @@ document.addEventListener('click', ev => {
     case 'cat-delete': {
       const c = catById(s.d.id);
       if (c && confirm(`Ștergi lista „${c.name}” cu tot ce e în ea?`)) {
-        db.entries = db.entries.filter(e => e.cat !== c.id);
+        deleteEntries(db.entries.filter(e => e.cat === c.id).map(e => e.id));
         db.categories = db.categories.filter(x => x.id !== c.id);
         save(); ui.catId = null; closeSheet(); toast('Lista a fost ștearsă');
       }
@@ -3474,9 +3579,7 @@ function confirmSwipeDelete(kind, id) {
     const n = db.entries.filter(e => e.cat === id).length;
     openActions(`Ștergi lista „${c.name}”${n === 1 ? ' și elementul din ea' : n ? ` și cele ${n} elemente din ea` : ''}? Nu se poate anula.`, [
       { label: '🗑 Șterge lista', danger: true, run: () => {
-        const withAlarm = db.entries.filter(e => e.cat === id && alarmUpcoming(e));
-        if (withAlarm.length) setTimeout(() => calendarLeftover(withAlarm), 350);
-        db.entries = db.entries.filter(e => e.cat !== id);
+        deleteEntries(db.entries.filter(e => e.cat === id).map(e => e.id));
         db.categories = db.categories.filter(x => x.id !== id);
         save(); render(); toast('Lista a fost ștearsă');
       } },
@@ -3730,3 +3833,10 @@ window.addEventListener('pageshow', () => setTimeout(checkForUpdate, 1500));
   render();
   setTimeout(() => scroller().scrollTo(0, st.y || 0), 50);
 })();
+
+// trip time rows: the label turns from placeholder-grey to normal once a time is chosen
+document.addEventListener('change', ev => {
+  if (ev.target.classList?.contains('plaintime')) ev.target.closest('.plainrow')?.classList.toggle('has', !!ev.target.value);
+});
+// the bottom-bar bubble follows size changes (rotation, split view)
+window.addEventListener('resize', () => { if (!tabDrag) placePill(document.querySelector(`#tabbar button[data-tab="${ui.tab}"]`)); });

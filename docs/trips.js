@@ -69,7 +69,7 @@ function tripStatus(t) {
   const n = Math.round((today - s) / 86400000) + 1;
   return { state: 'now', text: `Ziua ${n} din ${total}`, color: 'var(--green)' };
 }
-const fDayMonth = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'short' });
+const fDayMonth = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'long' });
 function tripRange(t) {
   const s = dayOf(t.start), e = dayOf(t.end || t.start);
   const yr = e.getFullYear() !== new Date().getFullYear() ? ' ' + e.getFullYear() : '';
@@ -185,7 +185,13 @@ function parseTicket(raw, trip) {
     || U.match(/\b(W6|W4|W9|FR|RR|RO|LH|OS|AF|KL|BA|TK|U2|EJU|EW|VY|AZ|LO|A3|0B|H4|LX|SN|IB|TP|EK|QR|SK|DY|FB|JU|PC|XQ|HV|TO|V7|AY)\s?(\d{2,4})\b/);
   const trainWords = /CFR|TREN|TRAIN|ZUG|OBB|SNCF|TRENITALIA|FRECCIA|ITALO|BAHN|RENFE|RAIL|VAGON|WAGEN|COACH|CARROZZA|REGIOTRANS|INTERREGIONAL/.test(U);
   const strongFlight = al || /BOARDING PASS|IMBARCARE|GATE CLOSES|\bFLIGHT\b|\bZBOR/.test(U);
-  if (strongFlight || (fl && !trainWords)) {
+  // buses first: FlixBus tickets mention "coach", "seat", even rail partners, but they are still a bus
+  const isBus = /FLIXBUS|FLIX BUS|AUTOCAR|AUTOBUZ|AUTOGARA|BUS STATION|BUSBAHNHOF|EUROLINES|ATLASSIB|BUS TICKET/.test(U) && !/FLIXTRAIN/.test(U);
+  if (isBus && !strongFlight) {
+    out.type = 'bus';
+    const bn = U.match(/\b(?:LINE|LINIA|LINIE|ROUTE|CURSA)\s*[:#]?\s*([A-Z]?\d{2,5})\b/);
+    out.title = (U.includes('FLIX') ? 'FlixBus' : 'Autobuz') + (bn ? ' ' + bn[1] : '');
+  } else if (strongFlight || (fl && !trainWords)) {
     out.type = 'flight';
     out.title = [al?.[1], fl ? `${fl[1]} ${fl[2]}` : ''].filter(Boolean).join(' ') || 'Zbor';
   } else {
@@ -536,7 +542,7 @@ function tripSheetHtml(type) {
       <div class="panel-head"><button data-act="sheet-close">Renunță</button><div class="t">${s.isNew ? 'Vacanță nouă' : 'Editează vacanța'}</div>
         <button class="save" data-act="tr-save-trip" ${d.dest.trim() ? '' : 'disabled'}>Salvează</button></div>
       <div class="panel-body">
-        <div class="form"><div class="field"><input type="text" id="f-title" class="titlein" data-tb="dest" placeholder="Unde mergi? (ex: Roma)" value="${esc(d.dest)}"></div></div>
+        <div class="form"><div class="field"><input type="text" id="f-title" class="titlein" data-tb="dest" placeholder="Unde mergi? (ex. Roma)" value="${esc(d.dest)}"></div></div>
         <div class="tr-emojis">${TRIP_EMOJIS.map(x => `<button class="${d.emoji === x ? 'on' : ''}" data-act="tr-emoji" data-v="${x}">${x}</button>`).join('')}</div>
         <div class="fhead">Când</div>
         <div class="form">
@@ -545,7 +551,7 @@ function tripSheetHtml(type) {
         </div>
         <div class="form" style="margin-top:14px">
           <div class="field"><span class="lbl">Moneda locală</span><select data-tb="currency">${TRIP_CURRENCIES.map(x => `<option ${x === d.currency ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
-          <div class="field"><input type="text" data-tb="notes" placeholder="Notițe (ex: cu cine mergi, cazarea…)" value="${esc(d.notes || '')}"></div>
+          <div class="field"><input type="text" data-tb="notes" placeholder="Notițe" value="${esc(d.notes || '')}"></div>
         </div>
         ${!s.isNew ? '<button class="btn red block mt" data-act="tr-del-trip-sheet">Șterge vacanța</button>' : ''}
       </div></div>`;
@@ -561,7 +567,7 @@ function tripSheetHtml(type) {
       <div class="panel-body">
         <div class="tr-types">${TRIP_TYPES.map(([k, ic, lbl]) => `<button class="${d.type === k ? 'on' : ''}" data-act="tr-type" data-v="${k}"><span>${ic}</span>${esc(lbl.split(' (')[0].split(' / ')[0])}</button>`).join('')}</div>
         <div class="form" style="margin-top:12px">
-          <div class="field"><input type="text" id="f-title" class="titlein" data-tb="title" placeholder="${esc(tt.label)}${hint ? ' (ex: ' + hint[0] + ')' : d.type === 'restaurant' ? ' (ex: Da Enzo)' : d.type === 'hotel' ? ' (ex: Hotel Artemide)' : ''}" value="${esc(d.title)}"></div>
+          <div class="field"><input type="text" id="f-title" class="titlein" data-tb="title" placeholder="${esc(tt.label)}${hint ? ' (ex. ' + hint[0] + ')' : d.type === 'restaurant' ? ' (ex. Da Enzo)' : d.type === 'hotel' ? ' (ex. Hotel Roma)' : ''}" value="${esc(d.title)}"></div>
           <div class="field"><input type="text" data-tb="notes" placeholder="Detalii (opțional)" value="${esc(d.notes || '')}"></div>
         </div>
         <div class="fhead">Când</div>
@@ -571,12 +577,12 @@ function tripSheetHtml(type) {
             return `<button class="${d.day === k ? 'on' : ''}" data-act="tr-day" data-v="${k}"><b>Ziua ${i + 1}</b><span>${esc(p[0])}<br>${esc(p[1] || '')}</span></button>`; }).join('')}
         </div>
         <div class="form" style="margin-top:10px">
-          <label class="field"><span class="ico">🕐</span><span class="lbl">${tr ? 'Plecare' : d.type === 'hotel' ? 'Check-in' : 'Ora'}</span><input type="time" class="timepill" data-tb="time" value="${esc(d.time || '')}"></label>
-          <label class="field"><span class="ico">🏁</span><span class="lbl">${tr ? 'Sosire' : d.type === 'hotel' ? 'Check-out' : 'Până la'}</span><input type="time" class="timepill" data-tb="endTime" value="${esc(d.endTime || '')}"></label>
+          <label class="field plainrow ${d.time ? 'has' : ''}"><span class="lbl">${tr ? 'Plecare' : d.type === 'hotel' ? 'Check-in' : 'Ora'}</span><input type="time" class="plaintime" data-tb="time" value="${esc(d.time || '')}"></label>
+          <label class="field plainrow ${d.endTime ? 'has' : ''}"><span class="lbl">${tr ? 'Sosire' : d.type === 'hotel' ? 'Check-out' : 'Până la'}</span><input type="time" class="plaintime" data-tb="endTime" value="${esc(d.endTime || '')}"></label>
         </div>
         ${tr ? `<div class="fhead">Traseu</div><div class="form">
-          <div class="field"><input type="text" data-tb="from" placeholder="De la${hint ? ' (ex: ' + hint[1] + ')' : ''}" value="${esc(d.from || '')}"></div>
-          <div class="field"><input type="text" data-tb="to" placeholder="Până la${hint ? ' (ex: ' + hint[2] + ')' : ''}" value="${esc(d.to || '')}"></div></div>` : ''}
+          <div class="field"><input type="text" data-tb="from" placeholder="De la${hint ? ' (ex. ' + hint[1] + ')' : ''}" value="${esc(d.from || '')}"></div>
+          <div class="field"><input type="text" data-tb="to" placeholder="Până la${hint ? ' (ex. ' + hint[2] + ')' : ''}" value="${esc(d.to || '')}"></div></div>` : ''}
         ${d.type !== 'note' ? `<div class="fhead">${tr ? 'Rezervare' : 'Loc și rezervare'}</div><div class="form">
           ${!tr ? `<div class="field"><input type="text" data-tb="place" placeholder="Adresă sau loc (pentru hărți)" value="${esc(d.place || '')}"></div>` : ''}
           <div class="field"><input type="text" data-tb="ref" placeholder="Cod rezervare / loc / poartă" value="${esc(d.ref || '')}" autocapitalize="characters"></div>

@@ -171,7 +171,7 @@
   .grila.din-stanga { animation: dinStanga .28s cubic-bezier(.2,.9,.3,1); }
   @keyframes dinDreapta { from { opacity: 0; transform: translateX(26px); } }
   @keyframes dinStanga { from { opacity: 0; transform: translateX(-26px); } }
-  .grila .cap { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding: 2px 0 4px; }
+  .grila .cap { text-align: center; font-size: 9.5px; font-weight: 700; letter-spacing: -.2px; white-space: nowrap; color: var(--muted); padding: 2px 0 4px; }
   .zi { aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;
     border-radius: 50%; background: transparent; user-select: none; position: relative; cursor: pointer; font-variant-numeric: tabular-nums;
     transition: transform .15s, background .15s, color .15s; }
@@ -339,8 +339,8 @@ try { if (window.top !== window.self) document.documentElement.classList.add("in
 
 // ---------- date calendaristice (UTC, fără probleme de oră de vară)
 const LUNI = ["Ianuarie","Februarie","Martie","Aprilie","Mai","Iunie","Iulie","August","Septembrie","Octombrie","Noiembrie","Decembrie"];
-const LUNI_SCURT = ["ian","feb","mar","apr","mai","iun","iul","aug","sep","oct","noi","dec"];
-const ZS = ["Du","Lu","Ma","Mi","Jo","Vi","Sâ"];
+const LUNI_SCURT = ["ianuarie","februarie","martie","aprilie","mai","iunie","iulie","august","septembrie","octombrie","noiembrie","decembrie"];   // full names: no abbreviations
+const ZS = ["Duminică","Luni","Marți","Miercuri","Joi","Vineri","Sâmbătă"];
 const ZILE_LUNG = ["duminică","luni","marți","miercuri","joi","vineri","sâmbătă"];
 const ZI_MS = 864e5;
 const D = (y, m, d) => new Date(Date.UTC(y, m - 1, d));
@@ -351,7 +351,7 @@ const _acum = new Date();
 const AZI = D(_acum.getFullYear(), _acum.getMonth() + 1, _acum.getDate());
 const K_AZI = cheie(AZI);
 const AN_AZI = AZI.getUTCFullYear();
-const fmt = d => `${ZS[d.getUTCDay()]} ${d.getUTCDate()} ${LUNI_SCURT[d.getUTCMonth()]}`;
+const fmt = d => `${ZS[d.getUTCDay()].toLowerCase()}, ${d.getUTCDate()} ${LUNI_SCURT[d.getUTCMonth()]}`;
 // „Joi, 19 noiembrie”
 const fmtLung = d => { const z = ZILE_LUNG[d.getUTCDay()]; return `${z[0].toUpperCase() + z.slice(1)}, ${d.getUTCDate()} ${LUNI[d.getUTCMonth()].toLowerCase()}`; };
 const zile = n => n === 1 ? "1 zi" : `${n} zile`;
@@ -573,7 +573,7 @@ function deseneazaSold() {
 function deseneazaCalendar() {
   $("titluLuna").textContent = `${LUNI[luna - 1]} ${an}`;
   const g = $("grila"); g.innerHTML = "";
-  ["Lu", "Ma", "Mi", "Jo", "Vi", "Sâ", "Du"].forEach(n => { const h = document.createElement("div"); h.className = "cap"; h.textContent = n; g.appendChild(h); });
+  ["Luni", "Marți", "Miercuri", "Joi", "Vineri", "Sâmbătă", "Duminică"].forEach(n => { const h = document.createElement("div"); h.className = "cap"; h.textContent = n; g.appendChild(h); });
   const prima = D(an, luna, 1), nrZile = new Date(Date.UTC(an, luna, 0)).getUTCDate();
   for (let i = 0; i < (prima.getUTCDay() + 6) % 7; i++) { const e = document.createElement("div"); e.className = "zi goala"; g.appendChild(e); }
   for (let z = 1; z <= nrZile; z++) {

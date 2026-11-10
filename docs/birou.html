@@ -136,7 +136,7 @@
   .luna.din-stanga { animation: dinStanga .26s cubic-bezier(.2,.9,.3,1); }
   @keyframes dinDreapta { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes dinStanga { from { transform: translateX(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
-  .grila .cap { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding: 2px 0 2px; }
+  .grila .cap { text-align: center; font-size: 9.5px; font-weight: 700; letter-spacing: -.2px; white-space: nowrap; color: var(--muted); padding: 2px 0 2px; }
   .grila .cap.we { opacity: .55; }
   .zi { aspect-ratio: 1 / 1; width: 100%; max-width: 46px; justify-self: center; display: grid; place-items: center;
     font-size: 15px; font-weight: 600; border-radius: 50%; cursor: pointer; font-variant-numeric: tabular-nums;
@@ -153,11 +153,9 @@
   .zi.azi { font-weight: 800; box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--accent); }
   .zi.azi:not(.birou):not(.acasa):not(.concediu):not(.liber):not(.sarb) { color: var(--accent);
     background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent); }
-  .legenda { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; padding-top: 11px; border-top: .5px solid var(--line); }
-  .legenda span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
-    padding: 3px 9px 3px 7px; border-radius: 20px; white-space: nowrap;
-    background: color-mix(in srgb, var(--cc) 13%, transparent); color: var(--cc); }
-  .legenda i { width: 9px; height: 9px; border-radius: 50%; background: var(--cc); display: block; }
+  .legenda { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 14px; margin-top: 12px; padding-top: 12px; border-top: .5px solid var(--line); }
+  .legenda span { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; line-height: 1.2; color: var(--text); }
+  .legenda i { width: 11px; height: 11px; border-radius: 50%; background: var(--cc); display: block; flex: 0 0 auto; }
   .legenda .azi-l i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--cc); }
   .info { display: none; }
   .indiciu { font-size: 13px; color: var(--muted); margin: 8px 6px 0; }
@@ -204,6 +202,7 @@
   .setari input { width: 40px; flex: 0 0 auto; padding: 6px 0; font-size: 16px; border: 0; border-radius: 8px;
     background: transparent; text-align: center; outline: none; font-weight: 700; font-variant-numeric: tabular-nums;
     -webkit-appearance: none; appearance: none; -moz-appearance: textfield; }
+  .setari input.ora { width: auto; min-width: 84px; padding: 6px 10px; font-weight: 600; }
   .setari input::-webkit-inner-spin-button, .setari input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .setari input:focus { background: var(--card); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
   .footnote { font-size: 13px; color: var(--muted); margin: 8px 6px 0; }
@@ -254,7 +253,7 @@
       <span style="--cc:var(--birou)"><i></i>Birou</span>
       <span style="--cc:var(--acasa)"><i></i>Acasă</span>
       <span style="--cc:var(--concediu)"><i></i>Concediu</span>
-      <span style="--cc:var(--liber)"><i></i>Liber supl.</span>
+      <span style="--cc:var(--liber)"><i></i>Liber suplimentar</span>
       <span style="--cc:var(--red)"><i></i>Sărbătoare</span>
       <span class="azi-l" style="--cc:var(--accent)"><i></i>Azi</span>
     </div>
@@ -265,7 +264,7 @@
   <section>
     <div class="kpi" id="kpi"></div>
     <div class="card tabelcard">
-      <table><thead><tr><th>Luna</th><th>Lucr.</th><th>CO</th><th>Birou</th><th>Bifat</th></tr></thead>
+      <table><thead><tr><th>Luna</th><th>Lucrătoare</th><th>Concediu</th><th>Birou</th><th>Bifat</th></tr></thead>
         <tbody id="tabelAn"></tbody></table>
     </div>
   </section>
@@ -275,9 +274,13 @@
     <div class="setari">
       <label><span>Zile acasă / lună</span>
         <span class="pas" style="flex:0 0 auto"><button type="button" data-pas="-1" aria-label="Mai puțin">−</button><input type="number" id="setAcasa" min="0" max="23" inputmode="numeric"><button type="button" data-pas="1" aria-label="Mai mult">+</button></span></label>
-      <label><span>Zile CO = −1 zi birou</span>
+      <label><span>Zile de concediu care scad o zi de birou</span>
         <span class="pas" style="flex:0 0 auto"><button type="button" data-pas="-1" aria-label="Mai puțin">−</button><input type="number" id="setCo" min="1" max="10" inputmode="numeric"><button type="button" data-pas="1" aria-label="Mai mult">+</button></span></label>
-      <div class="rd"><span>Program<small>8 h/zi · 40 h/săptămână</small></span><b>L–V 09:00 – 18:00</b></div>
+      <label><span>Începe programul</span><input type="time" class="ora" id="setStart"></label>
+      <label><span>Se termină programul</span><input type="time" class="ora" id="setEnd"></label>
+      <label><span>Pauză (minute)</span>
+        <span class="pas" style="flex:0 0 auto"><button type="button" data-pas="-15" aria-label="Mai puțin">−</button><input type="number" id="setPauza" min="0" max="180" step="15" inputmode="numeric"><button type="button" data-pas="15" aria-label="Mai mult">+</button></span></label>
+      <div class="rd"><span>Ore de lucru pe zi</span><b id="oreZi"></b></div>
     </div>
   </section>
 </main>
@@ -285,7 +288,12 @@
 <script>
 "use strict";
 const CHEIE = "calendarBirou.date";
-const ORE_PE_ZI = 8;
+// working hours per day, from the program you set (start – end – break)
+function orePeZi() {
+  const p = date.setari, m = t => { const [h, mi] = String(t || '').split(':').map(Number); return (h || 0) * 60 + (mi || 0); };
+  const min = Math.max(0, m(p.ora_end) - m(p.ora_start) - (+p.pauza || 0));
+  return Math.round(min / 60 * 10) / 10;
+}
 const LUNI = ["Ianuarie","Februarie","Martie","Aprilie","Mai","Iunie","Iulie","August","Septembrie","Octombrie","Noiembrie","Decembrie"];
 const ZILE = ["Duminică","Luni","Marți","Miercuri","Joi","Vineri","Sâmbătă"];
 const STARI = { birou: "Birou", acasa: "Acasă", concediu: "Concediu", liber: "Liber suplimentar", "": "Șterge" };
@@ -338,7 +346,7 @@ function statisticiLuna(an, luna, marcaje, zileAcasa, coPerZi, sarb) {
 function incarca() {
   let d = {};
   try { d = JSON.parse(localStorage.getItem(CHEIE)) || {}; } catch (e) { d = {}; }
-  d.setari = Object.assign({ zile_acasa: 10, co_per_zi: 2 }, d.setari || {});
+  d.setari = Object.assign({ zile_acasa: 10, co_per_zi: 2, ora_start: '09:00', ora_end: '18:00', pauza: 60 }, d.setari || {});
   d.zile = d.zile || {};
   return d;
 }
@@ -380,7 +388,7 @@ function deseneaza() {
   $("cardLuna").classList.toggle("curent", an === azi.getFullYear() && luna === azi.getMonth() + 1);
 
   const g = $("grila"); g.innerHTML = "";
-  ["L", "Ma", "Mi", "J", "V", "S", "D"].forEach((n, i) => {
+  ["Luni", "Marți", "Miercuri", "Joi", "Vineri", "Sâmbătă", "Duminică"].forEach((n, i) => {
     const h = document.createElement("div"); h.className = "cap" + (i >= 5 ? " we" : ""); h.textContent = n; g.appendChild(h);
   });
   const decalaj = (ziSapt(an, luna, 1) + 6) % 7;
@@ -399,7 +407,7 @@ function deseneaza() {
   ultimaLuna = cheieLuna;
 
   const s = statisticiLuna(an, luna, date.zile, za, co, sarb);
-  $("insigna").textContent = `${s.necesar} zile · ${s.necesar * ORE_PE_ZI} h`;
+  $("insigna").textContent = `${s.necesar} zile · ${Math.round(s.necesar * orePeZi())} ore`;
   // card progres (doar afișare)
   $("progLabel").textContent = `Bifate în ${LUNI[luna - 1].toLowerCase()}`;
   $("progVal").textContent = `${s.birou} din ${s.necesar}`;
@@ -410,7 +418,7 @@ function deseneaza() {
   if (s.ramas === 0) { st.textContent = `✔ Complet — ${s.birou} / ${s.necesar} zile bifate`; st.className = "stare ok"; p.style.background = "var(--verde)"; }
   else if (s.ramas > s.nemarcate) { st.textContent = `⚠ ${s.birou} / ${s.necesar} — mai trebuie ${s.ramas}, doar ${s.nemarcate} zile libere`; st.className = "stare rau"; p.style.background = "var(--rosu)"; }
   else { st.textContent = `${s.birou} / ${s.necesar} bifate — mai trebuie ${s.ramas}`; st.className = "stare"; p.style.background = "var(--verde)"; }
-  $("detalii").textContent = `${s.lucratoare} lucrătoare · ${s.sarbatori} sărbători legale · ${s.concediu} CO (−${s.reducereCo})` + (s.liber ? ` · ${s.liber} liber supl.` : "");
+  $("detalii").textContent = `${s.lucratoare} ${s.lucratoare === 1 ? 'zi lucrătoare' : 'zile lucrătoare'} · ${s.sarbatori} ${s.sarbatori === 1 ? 'sărbătoare legală' : 'sărbători legale'} · ${s.concediu} ${s.concediu === 1 ? 'zi' : 'zile'} de concediu (−${s.reducereCo} la birou)` + (s.liber ? ` · ${s.liber} liber suplimentar` : "");
 
   // an
   $("titluAn").textContent = `Total ${an}`;
@@ -433,8 +441,8 @@ function deseneaza() {
     tb.appendChild(tr);
   }
   $("kpi").innerHTML = [
-    [t.lucratoare, "Zile lucrătoare", ""], [t.sarbatori, "Sărbători (L–V)", "rau"], [t.concediu, "Concediu", ""],
-    [t.necesar, "Zile la birou", "ok"], [t.necesar * ORE_PE_ZI, "Ore la birou", "ok"], [t.ramas, "Rămase", ""],
+    [t.lucratoare, "Zile lucrătoare", ""], [t.sarbatori, "Sărbători", "rau"], [t.concediu, "Concediu", ""],
+    [t.necesar, "Zile la birou", "ok"], [Math.round(t.necesar * orePeZi()), "Ore la birou", "ok"], [t.ramas, "Rămase", ""],
   ].map(([v, e, c]) => `<div><b class="${c}">${v}</b><small>${e}</small></div>`).join("");
 }
 
@@ -467,11 +475,17 @@ $("grila").addEventListener("touchend", e => {
   if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) mutaLuna(dx < 0 ? 1 : -1);
 });
 
-for (const [id, cheie, min] of [["setAcasa", "zile_acasa", 0], ["setCo", "co_per_zi", 1]]) {
+const arataOre = () => { const h = orePeZi(); $("oreZi").textContent = `${String(h).replace('.', ',')} ${h === 1 ? 'oră' : 'ore'}`; };
+for (const [id, cheie] of [["setStart", "ora_start"], ["setEnd", "ora_end"]]) {
+  const el = $(id); el.value = date.setari[cheie];
+  el.addEventListener("change", () => { if (el.value) { date.setari[cheie] = el.value; salveaza(); arataOre(); deseneaza(); } });
+}
+arataOre();
+for (const [id, cheie, min] of [["setAcasa", "zile_acasa", 0], ["setCo", "co_per_zi", 1], ["setPauza", "pauza", 0]]) {
   const el = $(id); el.value = date.setari[cheie];
   el.addEventListener("input", () => {
     const v = parseInt(el.value, 10);
-    if (!isNaN(v) && v >= min) { date.setari[cheie] = v; salveaza(); deseneaza(); }
+    if (!isNaN(v) && v >= min) { date.setari[cheie] = v; salveaza(); arataOre(); deseneaza(); }
   });
 }
 // salvare și la închidere / trecere în fundal

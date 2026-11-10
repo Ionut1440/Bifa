@@ -701,3 +701,42 @@ body.scrolled #fixhead::after { border-bottom-color: var(--line); }
 
 /* the search bar is pinned too, right under the title */
 #fixhead .sbar { margin-bottom: 8px; }
+
+/* medicine weekdays: full names, two full rows (Monday–Friday, then Saturday + Sunday) */
+.wdays { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; }
+.wdays button { grid-column: span 2; font-size: 13px; text-transform: capitalize; padding: 0 2px; }
+.wdays button:nth-child(n+6) { grid-column: span 5; }
+
+/* icon picker: equal cells, every row full */
+.icongrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 10px; }
+.icongrid button { height: 46px; border-radius: 12px; background: var(--card); font-size: 22px; display: grid; place-items: center; transition: transform .12s; }
+.icongrid button.on { background: color-mix(in srgb, var(--accent) 22%, var(--card)); box-shadow: inset 0 0 0 2px var(--accent); }
+.icongrid button:active { transform: scale(.92); }
+
+/* tiles used as filters: the active one is more coloured, with a ring */
+button.tile.tog .tl::after { content: none; }
+button.tile.tog.on { background: color-mix(in srgb, var(--tc) 30%, var(--card)); box-shadow: inset 0 0 0 2px var(--tc); }
+
+/* segmented choice inside an action sheet (e.g. list grouping): no text shifting, the chosen one has the bubble */
+.asheet .aseg { padding: 12px 12px 14px; border-bottom: .5px solid var(--line); }
+.asheet .aseg-l { font-size: 13px; color: var(--muted); margin: 0 4px 8px; }
+.asheet .aseg .seg { margin: 0; }
+.asheet .aseg .seg button { display: block; padding: 8px 4px; font-size: 14px; color: var(--text); border: 0; }
+.asheet .aseg .seg button + button { border-top: 0; }
+
+.btn.wipe { color: var(--red); }
+
+.trashrow .lbl { display: flex; flex-direction: column; gap: 2px; }
+.trashrow .lbl small { color: var(--muted); font-size: 13px; }
+.trashrow .restore { flex: 0 0 auto; color: var(--accent); font-weight: 700; font-size: 15px; padding: 6px 4px; }
+
+/* trip times look exactly like the other rows (Loc și rezervare): placeholder-coloured label, plain value, no pill */
+.field.plainrow .lbl { color: color-mix(in srgb, var(--text) 32%, transparent); font-size: 16px; }
+.field.plainrow.has .lbl { color: var(--text); }
+.field input.plaintime { background: transparent; border-radius: 0; padding: 12px 0; min-height: 46px; font-size: 16px; color: var(--text); max-width: none; flex: 0 0 auto; text-align: right; }
+/* trip card: the facts one under another */
+.tripcard .chips { flex-direction: column; align-items: flex-start; gap: 4px; }
+.tc-dates { overflow-wrap: break-word; }
+/* day buttons: up to 3 per row, and the last row always stretches to the full width (no empty gap) */
+.tr-days { display: flex; flex-wrap: wrap; }
+.tr-days button { flex: 1 1 calc(33.333% - 8px); min-width: calc(33.333% - 8px); }
