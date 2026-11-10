@@ -450,7 +450,8 @@ function screenTrips(c) {
       <div class="right"><button class="iconbtn fill" style="background:${col}" data-act="tr-new" data-id="${c.id}">${ICON.plus}</button></div></div>
     <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
     ${!trips.length ? `<div class="empty"><div class="big">🧳</div><b>Nicio vacanță încă</b></div>` : ''}
-    ${sec('Acum în vacanță', by.now)}${sec('Urmează', by.future)}${sec('Trecute', by.past)}`;
+    ${sec('Acum în vacanță', by.now)}${sec('Urmează', by.future)}${sec('Trecute', by.past)}
+    ${typeof wipeAllBtn === 'function' ? wipeAllBtn(c) : ''}`;
 }
 
 function itemRow(it, opts = {}) {

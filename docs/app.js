@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-222900';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-223358';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -1072,8 +1072,7 @@ function screenCategory(c) {
     <div class="seg">${['active', 'done', 'all'].map(f => `<button class="${ui.filter === f ? 'on' : ''}" data-act="filter" data-f="${f}">${{ active: 'Active', done: 'Bifate', all: 'Toate' }[f]}</button>`).join('')}</div>
     <input class="search" type="search" id="search" placeholder="Caută în ${esc(c.name)}" value="${esc(ui.search)}">
     <div id="catlist">${categoryListHtml(c)}</div>
-    ${!ui.tileF && ui.filter === 'done' && all.some(e => e.done) ? `<button class="btn light block mt wipe" data-act="list-wipe" data-v="done" data-id="${c.id}">Șterge bifatele</button>` : ''}
-    ${!ui.tileF && ui.filter === 'all' && all.length ? `<button class="btn light block mt wipe" data-act="list-wipe" data-v="all" data-id="${c.id}">Șterge tot din listă</button>` : ''}`;
+    ${categoryVisible(c).length ? `<button class="btn light block mt wipe" data-act="list-wipe" data-id="${c.id}">Șterge tot din listă</button>` : ''}`;
 }
 
 function screenReminders() {
@@ -2159,12 +2158,12 @@ function screenShopping(c) {
         <div><div class="mt-l">În coș</div><div class="mt-v">${cart.length} din ${total}</div></div>
         <div class="mt-bar"><span style="width:${Math.round(cart.length / total * 100)}%"></span></div></div>` : ''}
     ${!total ? `<div class="empty"><div class="big">🛒</div><b>Lista e goală</b></div>` : ''}
-    ${!active.length && cart.length ? `<div class="banner" style="margin-top:12px"><b>Gata, ai luat tot! 🎉</b>Golește coșul când ajungi acasă.</div>` : ''}
+    ${!active.length && cart.length ? `<div class="banner" style="margin-top:12px"><b>Gata, ai luat tot! 🎉</b></div>` : ''}
     ${groups.map(g => `<div class="sec-title">${aisleIcon(g)} ${esc(g)} · ${by[g].length}</div>
       <div class="group">${sortManual(by[g]).map(e => rowHtml(e, { showGroup: false, reorder: 'shop' })).join('')}</div>`).join('')}
     ${cart.length ? `<div class="sl-head" style="margin-top:26px"><span>🛒 În coș · ${cart.length}</span><button data-act="cart-clear" data-id="${c.id}">Golește coșul</button></div>
       <div class="group">${cart.map(e => rowHtml(e, { showGroup: false })).join('')}</div>` : ''}
-    `;
+    ${wipeAllBtn(c)}`;
 }
 
 // ---------- month calendar to pick several days (reminder "Zile alese din calendar") ----------
@@ -2437,8 +2436,11 @@ function screenMeds(c) {
     ${sec('Urmează', groups.future)}
     ${sec('Terminate', groups.finished)}
     ${sec('Oprite', groups.stopped)}
-    `;
+    ${wipeAllBtn(c)}`;
 }
+// "Șterge tot din listă" on the special lists (medicines, shopping, trips): everything in the list, after a confirmation
+const wipeAllBtn = c => db.entries.some(e => e.cat === c.id)
+  ? `<button class="btn light block mt wipe" data-act="list-wipe" data-scope="all" data-id="${c.id}">Șterge tot din listă</button>` : '';
 
 // medicine editor
 function openMed(catId, entryId) {
@@ -3184,13 +3186,14 @@ document.addEventListener('click', ev => {
       ]);
       break;
     case 'list-wipe': {
-      const c = catById(id), all = el.dataset.v === 'all';
-      const list = db.entries.filter(e => e.cat === id && (all || e.done));
-      if (!c || !list.length) break;
+      // deletes exactly what the list shows now (Active / Bifate / Toate / a tile filter); everything goes to "Șterse recent"
+      const c = catById(id);
+      const list = !c ? [] : el.dataset.scope === 'all' ? db.entries.filter(e => e.cat === id) : categoryVisible(c);
+      if (!list.length) break;
       const n = list.length;
-      openActions(all ? (n === 1 ? `Ștergi elementul din ${c.name}?` : `Ștergi toate cele ${n} elemente din ${c.name}?`)
-        : (n === 1 ? `Ștergi elementul bifat din ${c.name}?` : `Ștergi cele ${n} elemente bifate din ${c.name}?`), [
-        { label: all ? '🗑 Șterge tot' : '🗑 Șterge bifatele', danger: true, run: () => { deleteEntries(list.map(e => e.id)); render(); toast(n === 1 ? 'Șters' : `${n} elemente șterse`); } },
+      const kind = el.dataset.scope === 'all' || ui.tileF ? '' : ui.filter === 'active' ? (n === 1 ? ' activ' : ' active') : ui.filter === 'done' ? (n === 1 ? ' bifat' : ' bifate') : '';
+      openActions(n === 1 ? `Ștergi elementul${kind} din ${c.name}?` : `Ștergi ${(ui.filter === 'all' && !ui.tileF) || el.dataset.scope === 'all' ? 'toate ' : ''}cele ${n} elemente${kind} din ${c.name}?`, [
+        { label: '🗑 Șterge tot', danger: true, run: () => { deleteEntries(list.map(e => e.id)); render(); toast(n === 1 ? 'Șters' : `${n} elemente șterse`); } },
       ]);
       break;
     }
