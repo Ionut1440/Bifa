@@ -800,3 +800,6 @@ button.banner.tap:active { transform: scale(.98); }
 @keyframes rowflash { from { background: color-mix(in srgb, var(--accent) 26%, var(--card)); } to { background: var(--card); } }
 .swipe.flash .swipe-content, .swipe.flash .row { animation: rowflash 4s linear both; }   /* fades evenly from start to end */
 @media (prefers-reduced-motion: reduce) { .swipe.flash .swipe-content, .swipe.flash .row { animation-duration: .01s; } }
+
+/* a banner used as a filter: more coloured while it is on */
+button.banner.tap.on { background: color-mix(in srgb, var(--accent) 26%, var(--card)); box-shadow: inset 0 0 0 2px var(--accent); }

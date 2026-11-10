@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-233616';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-233755';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -871,7 +871,7 @@ function screenLists() {
       const next = db.entries.filter(e => e.cat === c.id && e.trip && tripStatus(e.trip).state !== 'past').sort((a, b) => a.trip.start.localeCompare(b.trip.start))[0];
       sub = next ? `${next.trip.emoji || '✈️'} ${next.trip.dest} · ${tripStatus(next.trip).text}` : 'Planifică o vacanță';
     }
-    if (c.kind === 'app') sub = appUrlOf(c) === 'birou.html' ?'Zile de birou pe lună, după reguli' : 'Sold, calendar și idei de punți';
+    if (c.kind === 'app') sub = appUrlOf(c) === 'birou.html' ?'Zile de birou pe lună, după reguli' : 'Rezumat, calendar și idei de punți';
     if (isMedCat(c)) {
       const running = items.filter(e => e.med && medStatus(e).state === 'active').length;
       const doses = dosesOn(new Date()).filter(x => x.e.cat === c.id);
@@ -1085,16 +1085,18 @@ function screenCategory(c) {
 function screenReminders() {
   const list = db.entries.filter(e => e.hasReminder && catById(e.cat));
   const missed = list.filter(reminderMissed).sort((a, b) => parseLocal(b.reminder) - parseLocal(a.reminder));
-  const upcoming = list.filter(e => (!e.done || isRecent(e)) && !reminderMissed(e) && nextReminder(e));
+  let upcoming = list.filter(e => (!e.done || isRecent(e)) && !reminderMissed(e) && nextReminder(e));
+  const notAdded = upcoming.filter(e => !alarmAdded(e)).length;
+  if (ui.remNoAlarm && !notAdded) ui.remNoAlarm = false;
+  if (ui.remNoAlarm) upcoming = upcoming.filter(e => !alarmAdded(e));
   const days = {};
   for (const e of upcoming) { const d = startOfDay(nextReminder(e)); (days[+d] ||= []).push(e); }
   const keys = Object.keys(days).map(Number).sort((a, b) => a - b);
-  const notAdded = upcoming.filter(e => !alarmAdded(e)).length;
   return `
     ${mainHead('Remindere', `<button class="iconbtn fill" data-act="new-pick" data-rem="1">${ICON.plus}</button>`)}
-    ${notAdded ? `<button class="banner tap" data-act="hl-noalarm"><b>🔔 ${notAdded} ${notAdded === 1 ? 'reminder fără alarmă' : 'remindere fără alarmă'}</b></button>` : ''}
+    ${notAdded ? `<button class="banner tap ${ui.remNoAlarm ? 'on' : ''}" data-act="hl-noalarm"><b>🔔 ${notAdded} ${notAdded === 1 ? 'reminder fără alarmă' : 'remindere fără alarmă'}</b></button>` : ''}
     ${!missed.length && !keys.length ? `<div class="empty"><div class="big">🔔</div><b>Niciun reminder</b></div>` : ''}
-    ${missed.length ? `<div class="sec-title red">Trecute, nebifate</div><div class="group">${missed.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : ''}
+    ${missed.length && !ui.remNoAlarm ? `<div class="sec-title red">Trecute, nebifate</div><div class="group">${missed.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : ''}
     ${keys.map(k => `<div class="sec-title">${esc(dayHeader(new Date(k)))}</div><div class="group">${sortByRem(days[k]).map(e => rowHtml(e, { showCat: true })).join('')}</div>`).join('')}`;
 }
 const sortByRem = l => [...l].sort((a, b) => nextReminder(a) - nextReminder(b));
@@ -3208,13 +3210,14 @@ document.addEventListener('click', ev => {
       ]);
       break;
     case 'hl-noalarm': {
-      // show which reminders have no alarm: scroll to them and light them up, fading out over a few seconds
-      const ids = db.entries.filter(e => e.hasReminder && catById(e.cat) && (!e.done || isRecent(e)) && !reminderMissed(e) && nextReminder(e) && !alarmAdded(e)).map(e => e.id);
-      const rows = ids.map(i => document.querySelector(`#app .swipe[data-id="${i}"]`)).filter(Boolean);
-      if (!rows.length) break;
-      rows[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-      rows.forEach(r => { r.classList.remove('flash'); void r.offsetWidth; r.classList.add('flash'); });
-      setTimeout(() => rows.forEach(r => r.classList.remove('flash')), 4200);
+      // a filter: only the reminders without an alarm (all of them, however many), lit up briefly; tap again → everything
+      ui.remNoAlarm = !ui.remNoAlarm;
+      render();
+      if (ui.remNoAlarm) {
+        const rows = [...document.querySelectorAll('#app .swipe[data-swipe="entry"]')];
+        rows.forEach(r => r.classList.add('flash'));
+        setTimeout(() => rows.forEach(r => r.classList.remove('flash')), 4200);
+      }
       break;
     }
     case 'list-wipe': {
