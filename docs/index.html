@@ -2,15 +2,22 @@
 <html lang="ro">
 <head>
   <meta charset="utf-8">
-  <script>try{var t=localStorage.getItem("mindme.theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
+  <script>
+    // theme + iPhone status bar: dark → the app paints under the clock/Dynamic Island itself (white clock);
+    // light → the system bar with dark clock. iOS reads this when the app starts.
+    (function(){var t=null;try{t=localStorage.getItem("mindme.theme");}catch(e){}
+      if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);
+      var dark=t==="dark"||(t!=="light"&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches);
+      var m=function(n,c){var x=document.createElement("meta");x.name=n;x.content=c;document.head.appendChild(x);};
+      m("apple-mobile-web-app-status-bar-style",dark?"black-translucent":"default");
+      m("theme-color",dark?"#000000":"#F2F2F7");})();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
   <title>MindMe</title>
   <meta name="description" content="Notițe, comenzi, plăți și remindere – bifate.">
-  <meta name="theme-color" content="#7C5CFA">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="MindMe">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest">
