@@ -792,7 +792,7 @@ h1 .emo.glt .glyph { width: 23px; height: 23px; }
 .tiles:has(> :last-child:nth-child(5)), .tiles:has(> :last-child:nth-child(6)) { grid-template-columns: repeat(3, 1fr); }
 
 /* a section title that opens a screen (Setări → Aspect) starts at the same height as the content of the other tabs */
-.screen-body > .sec-title:first-child { margin-top: 0; }
+.screen-body > .sec-title:first-child { margin-top: 10px; }   /* = the 22px space above every other section title */
 /* a banner you can tap */
 button.banner.tap { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; transition: transform .12s; }
 button.banner.tap:active { transform: scale(.98); }
