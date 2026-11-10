@@ -4,6 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
+const BUILD_ID = '20261110-211800';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -3631,3 +3632,29 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 try { navigator.storage?.persist?.(); } catch (e) { /* ignore */ }
+
+
+// ---------- self-update: when the app comes back to the screen, check if a newer version was published ----------
+// (iOS resumes a home-screen app as it was, so without this an old version can stay open for days)
+async function checkForUpdate() {
+  if (BUILD_ID === 'dev' || ui.sheet || document.body.classList.contains('typing')) return;
+  try {
+    const t = await (await fetch('app.js?u=' + Date.now(), { cache: 'no-store' })).text();
+    const m = t.match(/const BUILD_ID = '([^']+)'/);
+    if (m && m[1] !== BUILD_ID && !ui.sheet) {
+      try { sessionStorage.setItem('mindme.ui', JSON.stringify({ tab: ui.tab, catId: ui.catId, trip: ui.trip, y: scroller().scrollTop })); } catch (e) { /* ignore */ }
+      location.reload();
+    }
+  } catch (e) { /* offline: try again next time */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
+window.addEventListener('pageshow', () => setTimeout(checkForUpdate, 1500));
+// after an automatic update, come back to the same screen
+(function restoreUi() {
+  let st = null;
+  try { st = JSON.parse(sessionStorage.getItem('mindme.ui') || 'null'); sessionStorage.removeItem('mindme.ui'); } catch (e) { /* ignore */ }
+  if (!st) return;
+  ui.tab = st.tab || ui.tab; ui.catId = st.catId || null; ui.trip = st.trip || null;
+  render();
+  setTimeout(() => scroller().scrollTo(0, st.y || 0), 50);
+})();
