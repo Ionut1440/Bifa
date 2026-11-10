@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-232445';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-233231';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -1092,7 +1092,7 @@ function screenReminders() {
   const notAdded = upcoming.filter(e => !alarmAdded(e)).length;
   return `
     ${mainHead('Remindere', `<button class="iconbtn fill" data-act="new-pick" data-rem="1">${ICON.plus}</button>`)}
-    ${notAdded ? `<div class="banner"><b>🔔 ${notAdded} ${notAdded === 1 ? 'reminder fără alarmă' : 'remindere fără alarmă'}</b></div>` : ''}
+    ${notAdded ? `<button class="banner tap" data-act="hl-noalarm"><b>🔔 ${notAdded} ${notAdded === 1 ? 'reminder fără alarmă' : 'remindere fără alarmă'}</b></button>` : ''}
     ${!missed.length && !keys.length ? `<div class="empty"><div class="big">🔔</div><b>Niciun reminder</b></div>` : ''}
     ${missed.length ? `<div class="sec-title red">Trecute, nebifate</div><div class="group">${missed.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : ''}
     ${keys.map(k => `<div class="sec-title">${esc(dayHeader(new Date(k)))}</div><div class="group">${sortByRem(days[k]).map(e => rowHtml(e, { showCat: true })).join('')}</div>`).join('')}`;
@@ -3207,6 +3207,16 @@ document.addEventListener('click', ev => {
         { label: '🗑 Golește definitiv', danger: true, run: () => { db.trash = []; save(); ui.sheet = { type: 'trash' }; renderSheet(); render(); } },
       ]);
       break;
+    case 'hl-noalarm': {
+      // show which reminders have no alarm: scroll to them and light them up, fading out over a few seconds
+      const ids = db.entries.filter(e => e.hasReminder && catById(e.cat) && (!e.done || isRecent(e)) && !reminderMissed(e) && nextReminder(e) && !alarmAdded(e)).map(e => e.id);
+      const rows = ids.map(i => document.querySelector(`#app .swipe[data-id="${i}"]`)).filter(Boolean);
+      if (!rows.length) break;
+      rows[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      rows.forEach(r => { r.classList.remove('flash'); void r.offsetWidth; r.classList.add('flash'); });
+      setTimeout(() => rows.forEach(r => r.classList.remove('flash')), 4200);
+      break;
+    }
     case 'list-wipe': {
       // deletes exactly what the list shows now (Active / Bifate / Toate / a tile filter); everything goes to "Șterse recent"
       const c = catById(id);

@@ -172,7 +172,7 @@ function catGlyph(c) {
   if (c.kind === 'meds') return 'medicamente';
   if (c.kind === 'shopping') return 'cumparaturi';
   if (c.kind === 'trips') return 'vacante';
-  if (c.kind === 'app') return /birou/.test(c.appUrl || '') ? 'birou' : 'concediu';
+  if (c.kind === 'app') return /birou/.test(c.appUrl || '') ? 'birou' : 'palm';   // Zile de concediu → palm tree
   return EMOJI_GLYPH[c.icon] || EMOJI_GLYPH[String(c.icon || '').replace(/️/g, '')] || 'folder';
 }
 function catIconHtml(c, extraCls = '') {
