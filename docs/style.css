@@ -785,3 +785,8 @@ h1 .emo.glt .glyph { width: 23px; height: 23px; }
 /* while dragging, colour comes from the finger's distance (tintTabs), not from a sudden .over switch */
 #tabbar.dragging button, #tabbar.dragging button.over, #tabbar.dragging button.on { transition: transform .09s linear; }
 #lens .lensrow button.over, #lens .lensrow button.on { color: inherit; }
+
+/* number tiles: never one alone on a row — 3 sit together on one row, 1 takes the full width, 2 and 4 go two by two */
+.tiles:has(> :last-child:nth-child(3)) { grid-template-columns: repeat(3, 1fr); }
+.tiles:has(> :last-child:nth-child(1)) { grid-template-columns: 1fr; }
+.tiles:has(> :last-child:nth-child(5)), .tiles:has(> :last-child:nth-child(6)) { grid-template-columns: repeat(3, 1fr); }

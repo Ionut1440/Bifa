@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-231831';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-231957';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -48,7 +48,8 @@ function dayHeader(d) {
   if (sameDay(d, addDays(now, 1))) return 'Mâine · ' + long;
   return cap(long);
 }
-const money = (a, c) => `${fNum.format(a)} ${c}`;
+const fMoney2 = new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (a, c) => `${Number.isInteger(+a) ? fNum.format(a) : fMoney2.format(a)} ${c}`;   // 1.249,50 RON (never 1.249,5)
 function totals(items) {
   const sums = {};
   for (const [a, c] of items) sums[c] = (sums[c] || 0) + a;
