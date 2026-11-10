@@ -671,7 +671,7 @@ button.tile .tl::after { content: " ›"; opacity: .6; }
 .about-ico { width: 72px; height: 72px; border-radius: 17px; box-shadow: 0 4px 14px rgba(0,0,0,.14); }
 .about-name { font-size: 22px; font-weight: 800; margin-top: 10px; }
 .about-ver { color: var(--muted); font-size: 14px; margin-top: 2px; }
-.about-txt { margin: 14px 0 0; font-size: 15px; line-height: 1.45; color: var(--text); text-align: center; text-wrap: balance; }
+.about-txt { margin: 14px 0 0; font-size: 15px; line-height: 1.45; color: var(--text); text-align: justify; text-align-last: justify; text-wrap: wrap; }
 .about-dev { margin-top: 14px; font-size: 15px; }
 .about-copy { margin-top: 4px; color: var(--muted); font-size: 12px; }
 

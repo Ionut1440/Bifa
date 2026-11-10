@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-212442';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-212920';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -827,6 +827,48 @@ function screenLists() {
 }
 
 // ---------- Setări ----------
+// "Despre": several wordings; on the phone itself we keep the one whose last line is (almost) full,
+// so the justified paragraph is a perfect block (fonts differ between devices, so this is measured live)
+const ABOUT_STARTS = [
+  'Organizatorul tău personal: ce ai de făcut, comenzi, plăți, notițe, remindere, medicamente, cumpărături, vacanțe, zile de concediu și zile la birou, într-o singură aplicație.',
+  'Organizatorul tău personal: ce ai de făcut, comenzi, plăți, notițe, remindere, cumpărături, medicamente, vacanțe, zile de concediu și zile la birou, toate într-o singură aplicație.',
+  'Organizatorul tău personal, cu tot ce contează într-o singură aplicație: ce ai de făcut, comenzi, plăți, notițe, remindere, medicamente, cumpărături, vacanțe, zile de concediu și zile la birou.',
+  'MindMe îți ține ordinea în viață: ce ai de făcut, comenzi, plăți, notițe, remindere, medicamente, cumpărături, vacanțe, zile de concediu și zile la birou, într-o singură aplicație.',
+];
+const ABOUT_ENDS = ['', ' Datele rămân doar pe telefonul tău.', ' Totul rămâne doar pe telefonul tău.', ' Totul rămâne doar pe telefonul tău, fără cont.',
+  ' Totul rămâne doar pe telefonul tău, fără cont și fără reclame.', ' Totul rămâne doar pe telefonul tău, fără cont, fără server și fără reclame.',
+  ' Datele tale rămân doar pe telefon: fără cont, fără server și fără reclame.', ' Datele tale rămân doar pe telefonul tău: fără cont, fără server, fără reclame.'];
+const ABOUT_TAILS = ['', ' Simplu și rapid.', ' Simplu, rapid și al tău.', ' Simplă, rapidă și doar a ta.', ' Gândită să-ți fie la îndemână în fiecare zi.'];
+const ABOUT_VARIANTS = ABOUT_STARTS.flatMap(st => ABOUT_ENDS.flatMap(e => ABOUT_TAILS.map(t => st + e + t)));
+function fitAbout() {
+  const p = document.getElementById('abouttxt');
+  if (!p || !p.clientWidth) return;
+  const probe = p.cloneNode(false);
+  probe.removeAttribute('id');
+  Object.assign(probe.style, { position: 'absolute', visibility: 'hidden', left: '0', top: '0', width: p.clientWidth + 'px', textAlign: 'left', textAlignLast: 'auto' });
+  document.body.appendChild(probe);
+  let best = null;
+  for (const v of ABOUT_VARIANTS) {
+    probe.textContent = v.replace(GLUE_RE, '$1‑');
+    const r = document.createRange(); r.selectNodeContents(probe);
+    const rects = [...r.getClientRects()].filter(x => x.width > 0);
+    const lastTop = Math.max(...rects.map(x => Math.round(x.top)));
+    const last = rects.filter(x => Math.round(x.top) === lastTop);
+    const fill = (Math.max(...last.map(x => x.right)) - Math.min(...last.map(x => x.left))) / probe.clientWidth;
+    const tops = [...new Set(rects.map(x => Math.round(x.top)))];
+    const lines = tops.length;
+    // fullness of the other lines too (a half-empty line would get big gaps when justified)
+    const minFill = Math.min(1, ...tops.slice(0, -1).map(t => { const rs = rects.filter(x => Math.round(x.top) === t);
+      return (Math.max(...rs.map(x => x.right)) - Math.min(...rs.map(x => x.left))) / probe.clientWidth; }));
+    // best: last line (almost) full, every line well filled, then the richest text — at most 6 lines
+    const score = lines > 6 ? fill - 5 : (fill >= 0.93 ? 2 : fill) + minFill * 1.5 + v.length / 2000;
+    if (!best || score > best.score) best = { v, score };
+  }
+  probe.remove();
+  p.textContent = best.v.replace(GLUE_RE, '$1‑');
+  p.classList.add('fitted');
+}
+window.addEventListener('resize', () => { if (ui.tab === 'settings') fitAbout(); });
 function themePref() { try { return localStorage.getItem('mindme.theme') || 'auto'; } catch (e) { return 'auto'; } }
 function applyTheme(t) {
   try { if (t === 'auto') localStorage.removeItem('mindme.theme'); else localStorage.setItem('mindme.theme', t); } catch (e) { /* ignore */ }
@@ -883,7 +925,7 @@ function screenSettings() {
       <img src="icons/icon-192.png" alt="" class="about-ico">
       <div class="about-name">MindMe</div>
       <div class="about-ver">Versiunea ${VERSION} · ${BUILD_DATE}</div>
-      <p class="about-txt">Organizatorul tău personal: ce ai de făcut, comenzi, plăți, notițe, remindere, medicamente, cumpărături, vacanțe, zile de concediu și zile la birou, într-o singură aplicație.</p>
+      <p class="about-txt" id="abouttxt">${esc(ABOUT_VARIANTS[0])}</p>
       <div class="about-dev">Dezvoltată de <b>Ionuț Mătanie</b></div>
       <div class="about-copy">© 2026 Ionuț Mătanie. Toate drepturile rezervate.</div>
     </div>`;
@@ -1004,6 +1046,7 @@ function render() {
   pinHeader(app);
   glueHyphens(app); glueHyphens(document.getElementById('fixhead'));
   requestAnimationFrame(markScrolled);
+  if (ui.tab === 'settings') requestAnimationFrame(fitAbout);
   openSwipeEl = null;
   scroller().scrollTo(0, ui.searching ? 0 : y);
   renderTabbar();
