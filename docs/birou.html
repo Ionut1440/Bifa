@@ -18,8 +18,8 @@
   /* ---------- MindMe design tokens (identice cu style.css) ---------- */
   :root {
     --bg: #F2F2F7; --card: #FFFFFF; --card2: #F7F7FA; --text: #111114; --muted: #8A8A93;
-    --line: rgba(60, 60, 67, .14); --accent: #7C5CFA;
-    --red: #EB4240; --green: #2EB87A; --orange: #FF8C40; --blue: #3478F6; --purple: #9961F2;
+    --line: rgba(60, 60, 67, .14); --accent: #0E9AA7;
+    --red: #EB4240; --green: #2EB87A; --orange: #FF8C40; --blue: #3478F6; --purple: #5F7286;
     --fill: rgba(118, 118, 128, .14); --fill2: rgba(118, 118, 128, .09);
     --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 14px rgba(0,0,0,.05);
     --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
@@ -35,14 +35,14 @@
       --bg: #000000; --card: #1C1C1E; --card2: #2C2C2E; --text: #F4F4F6; --muted: #8E8E96;
       --line: rgba(255, 255, 255, .12); --shadow: none; --pill: #636366; --verde-inchis: #3CCB8B;
       --fill2: rgba(118, 118, 128, .2); --field: #2C2C2E;
-      color-scheme: dark;
+      color-scheme: dark; --accent: #26B5C2;
     }
 }
 :root[data-theme="dark"] {
       --bg: #000000; --card: #1C1C1E; --card2: #2C2C2E; --text: #F4F4F6; --muted: #8E8E96;
       --line: rgba(255, 255, 255, .12); --shadow: none; --pill: #636366; --verde-inchis: #3CCB8B;
       --fill2: rgba(118, 118, 128, .2); --field: #2C2C2E;
-      color-scheme: dark;
+      color-scheme: dark; --accent: #26B5C2;
     }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
@@ -220,6 +220,10 @@
 }
 :root[data-theme="dark"] #toast { background: #3A3A3C; }
   @media (prefers-reduced-motion: reduce) { .grila, .luna { animation: none !important; } }
+
+  /* no emoji: drawings in their place (icons.js) */
+  .ig { display: inline-flex; width: 1.15em; height: 1.15em; vertical-align: -.2em; flex: 0 0 auto; }
+  .ig svg { width: 100%; height: 100%; }
 </style>
 </head>
 <body>
@@ -587,5 +591,6 @@ window.addEventListener("scroll", () => {
   if (a && a.tagName === "INPUT") a.blur();
 }, { passive: true });
 </script>
+<script src="icons.js"></script>
 </body>
 </html>

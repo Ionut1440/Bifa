@@ -19,13 +19,13 @@
   /* ---------- MindMe design tokens (identice cu style.css din MindMe) ---------- */
   :root {
     --bg: #F2F2F7; --card: #FFFFFF; --card2: #F7F7FA; --text: #111114; --muted: #8A8A93;
-    --line: rgba(60, 60, 67, .14); --accent: #7C5CFA; --red: #EB4240; --green: #2EB87A; --orange: #FF8C40;
+    --line: rgba(60, 60, 67, .14); --accent: #0E9AA7; --red: #EB4240; --green: #2EB87A; --orange: #FF8C40;
     --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 14px rgba(0,0,0,.05);
     --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
     --jos: 110px;   /* MindMe's glass bar floats over the last ~100px */
     --segpill: #FFFFFF; --segbg: rgba(118,118,128,.14); --track: #EFEFF4;
     /* nume vechi, folosite și în HTML-ul generat din script */
-    --indigo: var(--accent); --violet: #9961F2; --text2: var(--muted); --fundal: var(--bg); --linie: var(--line);
+    --indigo: var(--accent); --violet: #5F7286; --text2: var(--muted); --fundal: var(--bg); --linie: var(--line);
     --coral: #FF7A59; --galben: #FFC94D;
     --co: #14B8A6; --co-trecut: #94D3CC; --sarb: #F43F5E; --sarb-bg: #FFE4E9; --we-bg: #ECECF1; --we: #8A8A93;
     color-scheme: light;
@@ -35,14 +35,14 @@
       --bg: #000000; --card: #1C1C1E; --card2: #2C2C2E; --text: #F4F4F6; --muted: #8E8E96;
       --line: rgba(255, 255, 255, .12); --shadow: none; --segpill: #636366; --segbg: rgba(118,118,128,.24); --track: #2C2C2E;
       --co-trecut: #2F7F77; --sarb-bg: rgba(244, 63, 94, .2); --we-bg: #2C2C2E; --we: #8E8E96;
-      color-scheme: dark;
+      color-scheme: dark; --accent: #26B5C2;
     }
 }
 :root[data-theme="dark"] {
       --bg: #000000; --card: #1C1C1E; --card2: #2C2C2E; --text: #F4F4F6; --muted: #8E8E96;
       --line: rgba(255, 255, 255, .12); --shadow: none; --segpill: #636366; --segbg: rgba(118,118,128,.24); --track: #2C2C2E;
       --co-trecut: #2F7F77; --sarb-bg: rgba(244, 63, 94, .2); --we-bg: #2C2C2E; --we: #8E8E96;
-      color-scheme: dark;
+      color-scheme: dark; --accent: #26B5C2;
     }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -259,6 +259,10 @@
     padding: 11px 18px; border-radius: 22px; font-size: 14px; font-weight: 600; text-align: center; z-index: 30; width: max-content; max-width: calc(100% - 32px);
     box-shadow: 0 6px 20px rgba(0,0,0,.2); animation: urcaToast .28s cubic-bezier(.2,.9,.3,1); }
   @keyframes urcaToast { from { transform: translate(-50%, 24px); opacity: 0; } }
+
+  /* no emoji: drawings in their place (icons.js) */
+  .ig { display: inline-flex; width: 1.15em; height: 1.15em; vertical-align: -.2em; flex: 0 0 auto; }
+  .ig svg { width: 100%; height: 100%; }
 </style>
 </head>
 <body>
@@ -808,5 +812,6 @@ if ("serviceWorker" in navigator && location.protocol === "https:") /* offline: 
 salveaza();
 deseneaza();
 </script>
+<script src="icons.js"></script>
 </body>
 </html>

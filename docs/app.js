@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-225751';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-230930';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -66,7 +66,7 @@ function parseAmount(t) {
 }
 
 // ---------- constants ----------
-const PALETTE = ['#5B6BFA', '#FF8C40', '#2EB87A', '#F2B31A', '#ED548C', '#9961F2', '#1AB3CC', '#EB4240', '#8C6B4D', '#738094'];
+const PALETTE = ['#2F80ED', '#FF8C40', '#2EB87A', '#F2B31A', '#ED548C', '#5F7286', '#1AB3CC', '#EB4240', '#8C6B4D', '#0E9AA7'];   // no purple
 const EMOJIS = ['✅', '📦', '💳', '📝', '🔔', '🛒', '🛍️', '🏠', '💼', '❤️', '⭐', '🎁', '🚗', '✈️', '🍽️', '💊', '📚', '🎓', '🏋️', '🐾', '🌿', '🔧', '📄', '📅', '💰', '🏦', '👥', '📞', '💡', '🏷️', '📁', '🎵', '🎮', '👕', '🎂', '🧾'];
 const CURRENCIES = ['RON', 'EUR', 'USD', 'GBP'];
 const REPEATS = { none: 'Niciodată', daily: 'Zilnic', custom: 'La fiecare câteva zile', dates: 'Zile alese din calendar', weekly: 'Săptămânal', monthly: 'Lunar', yearly: 'Anual' };
@@ -149,7 +149,7 @@ function aisles() {
   return [...base, ...mine.filter(m => !base.some(b => normText(b[0]) === normText(m[0]))), other];
 }
 // 30 icons = 5 full rows of 6 (no half-empty last row)
-const AISLE_ICONS = ['🏷️', '🌱', '🥦', '🍎', '🥖', '🧀', '🥚', '🥩', '🍗', '🐟', '🥫', '🍝', '🍚', '🧂', '🍫', '🍬', '🍪', '🥜', '🧃', '🍷', '🍺', '☕', '🧊', '🧴', '🧻', '🧹', '🐶', '👶', '🎁', '🛠️'];
+const AISLE_ICONS = ['🏷️', '🌱', '🥦', '🍎', '🥖', '🧀', '🥚', '🥩', '🍗', '🐟', '🥫', '🏠', '🍚', '🧂', '🍫', '🍬', '🍪', '🥜', '🧃', '🍷', '🍺', '☕', '🧊', '🧴', '🧻', '🧹', '🐶', '👶', '🎁', '🛠️'];
 function builtinAisles() {
   return [
     ['Fructe și legume', '🥦', 'mere mar banane banana portocal lamai lamaie lime mandarin grepfrut struguri capsuni afine zmeura pere para kiwi ananas pepene piersic nectarin caise cirese visine prune avocado mango rodie rosii rosie cherry castrav ardei ceapa usturoi cartof morcov varza salata spanac broccoli brocoli conopid dovlec vinete ciuperci patrunjel marar leustean telina ridichi sfecla ghimbir rucola verdeata fructe legume lamaita praz'],
@@ -1122,6 +1122,7 @@ function render() {
   document.body.classList.toggle('searching', !!(isMain && ui.searching));
   pinHeader(app);
   glueHyphens(app); glueHyphens(document.getElementById('fixhead'));
+  if (typeof emojiToGlyphs === 'function') { emojiToGlyphs(app); emojiToGlyphs(document.getElementById('fixhead')); }
   requestAnimationFrame(markScrolled);
   if (ui.tab === 'settings') requestAnimationFrame(fitAbout);
   openSwipeEl = null;
@@ -2690,7 +2691,7 @@ function generalStatsHtml() {
     </div>
     <div class="form chart">
       <div class="readout"><b>${esc(cap(fMonthLong.format(sel.d)))}</b><span>${nItems(sel.n)}</span></div>
-      <div class="bars">${barsHtml(buckets, sel.key, metric === 'done' ? '#2EB87A' : '#7C5CFA', 'stat-sel', b => b.n)}</div>
+      <div class="bars">${barsHtml(buckets, sel.key, metric === 'done' ? '#2EB87A' : '#0E9AA7', 'stat-sel', b => b.n)}</div>
     </div>
     <div class="ffoot">${metric === 'done' ? 'Câte ai bifat' : 'Câte ai adăugat'} în fiecare lună. Apasă sau glisează peste luni ca să vezi ce e în ele.</div>
     ${monthListHtml(sel,
@@ -2944,6 +2945,7 @@ function renderSheet() {
   document.body.style.overflow = 'hidden';
   initSegs(el);
   glueHyphens(el);
+  if (typeof emojiToGlyphs === 'function') emojiToGlyphs(el);
   if (typeof tripAfterRender === 'function') tripAfterRender();
 }
 function closeSheet() { ui.sheet = null; ui.pendingRerender = false; renderSheet(); render(); }

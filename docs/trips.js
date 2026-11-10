@@ -28,7 +28,7 @@ const TRIP_TYPES = [
 ];
 const TT = Object.fromEntries(TRIP_TYPES.map(t => [t[0], { icon: t[1], label: t[2], group: t[3] }]));
 const isTransport = type => TT[type]?.group === 'transport';
-const TRIP_EMOJIS = ['🏖️', '🏝️', '🏔️', '⛷️', '🏙️', '🗼', '🗽', '🏛️', '🕌', '🌴', '🚢', '🏕️', '🎡', '🍷', '✈️', '🧳'];
+const TRIP_EMOJIS = ['🏖️', '🏝️', '🏔️', '⛷️', '🏙️', '🏛️', '🚢', '🏕️', '🍷', '✈️', '🧳', '☀️'];
 const TRIP_CURRENCIES = ['EUR', 'RON', 'USD', 'GBP', 'CHF', 'HUF', 'CZK', 'PLN', 'TRY', 'BGN'];
 // the user's own standard packing list (editable in the app; every new trip starts with it)
 const PACK_DEFAULT = ['Haine (pantaloni, tricouri, cămăși, bluze, pulovere, șosete, chiloți, pijamale)', 'Papuci', 'Lanternă', 'Kindle', 'Buletin',
