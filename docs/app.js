@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-233450';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-233616';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -980,10 +980,10 @@ function screenSettings() {
       ${row('🏷️', 'Produsele mele (cumpărături)', chev, 'my-products')}
     </div>
 
-    <div class="sec-title">Date și backup</div>
+    <div class="sec-title">Date</div>
     <div class="group setgroup">
-      ${row('⬇️', 'Salvează o copie (backup)', chev, 'export')}
-      ${row('⬆️', 'Încarcă dintr-un backup', chev, 'import')}
+      ${row('⬇️', 'Salvează o copie a datelor', chev, 'export')}
+      ${row('⬆️', 'Încarcă o copie a datelor', chev, 'import')}
       ${row('🗑️', 'Șterse recent', `${(db.trash || []).length ? `<span class="setval">${db.trash.length}</span>` : ''}${chev}`, 'trash-open')}
       ${row('💾', 'Spațiu folosit', `<span class="setval">${storageUsed()}</span>`)}
       ${row('🗂️', 'Conținut', `<span class="setval">${nLists} ${nLists === 1 ? 'listă' : 'liste'} · ${nItems} ${nItems === 1 ? 'element' : 'elemente'}</span>`)}
@@ -2977,10 +2977,10 @@ function toast(msg) {
 // ---------- backup ----------
 function exportData() {
   const blob = new Blob([JSON.stringify(db, null, 1)], { type: 'application/json' });
-  const name = `mindme-backup-${toLocal(new Date()).slice(0, 10)}.json`;
+  const name = `mindme-copie-${toLocal(new Date()).slice(0, 10)}.json`;
   const file = new File([blob], name, { type: 'application/json' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    navigator.share({ files: [file], title: 'Backup MindMe' }).catch(() => {});
+    navigator.share({ files: [file], title: 'Copie a datelor MindMe' }).catch(() => {});
     return;
   }
   const a = document.createElement('a');
@@ -2999,9 +2999,9 @@ function importData() {
     try {
       const d = JSON.parse(await f.text());
       if (!Array.isArray(d.categories) || !Array.isArray(d.entries)) throw new Error('format');
-      if (!confirm(`Înlocuiesc datele actuale cu backup-ul (${d.categories.length} liste, ${d.entries.length} elemente)?`)) return;
-      db = d; save(); ui.catId = null; render(); toast('Backup încărcat ✓');
-    } catch (e) { alert('Fișierul nu e un backup MindMe valid.'); }
+      if (!confirm(`Înlocuiesc datele actuale cu copia salvată (${d.categories.length} liste, ${d.entries.length} elemente)?`)) return;
+      db = d; save(); ui.catId = null; render(); toast('Copia datelor a fost încărcată');
+    } catch (e) { alert('Fișierul nu este o copie a datelor MindMe.'); }
   };
   inp.click();
 }
@@ -3269,8 +3269,8 @@ document.addEventListener('click', ev => {
     }
     case 'set-pack': ui.sheet = { type: 'trippack' }; renderSheet(); break;
     case 'wipe-all':
-      openActions('Ștergi toate listele și toate datele din MindMe? Nu se poate anula. Fă înainte un backup dacă vrei să le păstrezi.', [
-        { label: '⬇️ Salvează întâi un backup', run: () => exportData() },
+      openActions('Ștergi toate listele și toate datele din MindMe? Nu se poate anula. Salvează înainte o copie a datelor dacă vrei să le păstrezi.', [
+        { label: 'Salvează întâi o copie a datelor', run: () => exportData() },
         { label: '🗑 Șterge tot', danger: true, run: () => {
           if (!confirm('Sigur? Toate datele vor fi șterse definitiv.')) return;
           try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }

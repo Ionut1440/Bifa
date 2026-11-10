@@ -797,6 +797,6 @@ h1 .emo.glt .glyph { width: 23px; height: 23px; }
 button.banner.tap { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; transition: transform .12s; }
 button.banner.tap:active { transform: scale(.98); }
 /* highlighted rows (e.g. reminders without an alarm): turquoise glow that fades out over a few seconds */
-@keyframes rowflash { 0%, 25% { background: color-mix(in srgb, var(--accent) 26%, var(--card)); } 100% { background: var(--card); } }
-.swipe.flash .swipe-content, .swipe.flash .row { animation: rowflash 4s ease-out both; }
+@keyframes rowflash { from { background: color-mix(in srgb, var(--accent) 26%, var(--card)); } to { background: var(--card); } }
+.swipe.flash .swipe-content, .swipe.flash .row { animation: rowflash 4s linear both; }   /* fades evenly from start to end */
 @media (prefers-reduced-motion: reduce) { .swipe.flash .swipe-content, .swipe.flash .row { animation-duration: .01s; } }
