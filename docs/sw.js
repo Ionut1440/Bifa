@@ -1,7 +1,7 @@
 // Offline support: try the network first (so updates show up right away),
 // fall back to the cached copy when offline.
 const CACHE = 'bifa-v5';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'catalog.js', 'trips.js', 'concediu.html', 'birou.html', 'manifest.webmanifest',
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'catalog.js', 'trips.js', 'icons.js', 'concediu.html', 'birou.html', 'manifest.webmanifest',
   'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {

@@ -448,7 +448,7 @@ function screenTrips(c) {
   return `
     <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
       <div class="right"><button class="iconbtn fill" style="background:${col}" data-act="tr-new" data-id="${c.id}">${ICON.plus}</button></div></div>
-    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    <h1>${typeof catTitleIcon === "function" ? catTitleIcon(c) : `<span class="emo">${c.icon}</span>`}${esc(c.name)}</h1>
     ${!trips.length ? `<div class="empty"><div class="big">🧳</div><b>Nicio vacanță încă</b></div>` : ''}
     ${sec('Acum în vacanță', by.now)}${sec('Urmează', by.future)}${sec('Trecute', by.past)}
     ${typeof wipeAllBtn === 'function' ? wipeAllBtn(c) : ''}`;
@@ -568,13 +568,14 @@ function tripPackingHtml(e) {
       <input id="tr-pack" type="text" placeholder="Mai iei ceva pentru vacanța asta?" autocomplete="off" enterkeyhint="done">
     </div>
     <div class="qa-links"><button data-act="tr-pack-edit">✏️ Lista mea standard</button></div>
-    ${sugg.length && list.length ? `<div class="sl-title" style="margin:10px 4px 8px">Din lista standard · atinge ca să adaugi</div>
+    ${sugg.length && list.length ? `<div class="sl-title" style="margin:10px 4px 8px">Din lista standard</div>
       <div class="quick wrap" style="--pink:var(--orange);padding:0">${sugg.map(x => `<button data-act="tr-pack-sugg" data-v="${esc(x)}">＋ ${esc(x)}</button>`).join('')}</div>` : ''}
     ${list.length ? `<div class="sec-title">De pus în bagaj</div><div class="group">${list.map(p => `
       <div class="row ${p.done ? 'done' : ''}" data-act="tr-pack-toggle" data-pid="${p.id}">
         <button class="check ${p.done ? 'on' : ''}" style="--c:var(--orange)" data-act="tr-pack-toggle" data-pid="${p.id}">${ICON.check}</button>
         <div class="rbody"><div class="rtitle">${esc(p.title)}</div></div>
-        <button class="x" data-act="tr-pack-del" data-pid="${p.id}" style="color:var(--muted);font-size:16px;width:30px">✕</button></div>`).join('')}</div>` : ''}`;
+        <button class="x" data-act="tr-pack-del" data-pid="${p.id}" style="color:var(--muted);font-size:16px;width:30px">✕</button></div>`).join('')}</div>
+      <button class="btn light block mt wipe" data-act="tr-pack-wipe">Șterge tot din listă</button>` : ''}`;
 }
 
 function tripBudgetHtml(e) {
@@ -891,6 +892,14 @@ function tripClick(act, el) {
     case 'tr-pack-toggle': { const p = (cur.trip.packing || []).find(x => x.id === el.dataset.pid); if (p) { p.done = !p.done; save(); render(); } break; }
     case 'tr-pack-del': cur.trip.packing = (cur.trip.packing || []).filter(x => x.id !== el.dataset.pid); save(); render(); break;
     case 'tr-pack-std': addStandardPacking(cur); render(); break;
+    case 'tr-pack-wipe': {
+      const n = (cur?.trip.packing || []).length;
+      if (!n) break;
+      openActions(n === 1 ? 'Ștergi lucrul din lista de bagaj?' : `Ștergi toate cele ${n} lucruri din lista de bagaj a acestei vacanțe? Lista ta standard rămâne neschimbată.`, [
+        { label: '🗑 Șterge tot', danger: true, run: () => { cur.trip.packing = []; save(); render(); toast('Lista de bagaj e goală'); } },
+      ]);
+      break;
+    }
     case 'tr-pack-edit': ui.sheet = { type: 'trippack' }; renderSheet(); break;
     case 'tr-pk-del': packTemplate().splice(+el.dataset.i, 1); save(); renderSheet(); break;
     case 'tr-pk-reset': openActions('Revii la lista inițială de bagaj? Modificările tale din lista standard se pierd.', [{ label: 'Revino la lista inițială', danger: true,

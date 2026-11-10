@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-224354';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-225233';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -884,7 +884,7 @@ function screenLists() {
     return `<div class="swipe" ${ui.reorder ? '' : 'data-swipe="cat"'} data-id="${c.id}"><button class="swipe-del" data-act="swipe-del" data-kind="cat" data-id="${c.id}">${ICON.trash}<span>Șterge</span></button>
     <button class="swipe-set" data-act="swipe-set" data-id="${c.id}">${ICON.gear}<span>Setări</span></button>
     <div class="catrow swipe-content" data-act="${ui.reorder ? '' : 'open-cat'}" data-id="${c.id}">
-      <div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
+      ${catIconHtml(c)}
       <div style="flex:1;min-width:0"><div class="catname">${esc(c.name)}</div><div class="catsub ${over ? 'red' : ''}">${sub}</div></div>
       ${right}
     </div></div>`;
@@ -965,6 +965,13 @@ function screenSettings() {
     <div class="group setgroup">
       <div class="setrow col"><div class="setrow-top"><span class="seticon">🌗</span><span class="setlbl">Temă</span></div>
         <div class="seg">${[['auto', 'Automat'], ['light', 'Luminos'], ['dark', 'Întunecat']].map(([k, l]) => `<button class="${th === k ? 'on' : ''}" data-act="theme" data-v="${k}">${l}</button>`).join('')}</div></div>
+    </div>
+
+    <div class="group setgroup" style="margin-top:10px">
+      <div class="setrow col"><div class="setrow-top"><span class="seticon">🎨</span><span class="setlbl">Iconițe</span></div>
+        <div class="iconpick">${ICON_STYLES.map(([k, l]) => `<button class="${iconStyle() === k ? 'on' : ''}" data-act="icon-style" data-v="${k}">
+          <span class="ip-demo">${k === 'emoji' ? '<span class="caticon" style="--c:var(--accent)">📋</span>'
+            : `<span class="caticon gl-${k}" style="--c:var(--accent)">${glyphSvg('liste', k)}</span>`}</span><span class="ip-l">${l}</span></button>`).join('')}</div></div>
     </div>
 
     <div class="sec-title">Liste</div>
@@ -1067,7 +1074,7 @@ function screenCategory(c) {
       <div class="right">
       <button class="iconbtn" data-act="cat-menu" data-id="${c.id}">${ICON.more}</button>
       <button class="iconbtn fill" style="background:${col}" data-act="new" data-id="${c.id}">${ICON.plus}</button></div></div>
-    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    <h1>${catTitleIcon(c)}${esc(c.name)}</h1>
     ${showTiles ? `<div class="tiles">${tiles.join('')}</div>` : ''}
     <div class="seg">${['active', 'done', 'all'].map(f => `<button class="${ui.filter === f ? 'on' : ''}" data-act="filter" data-f="${f}">${{ active: 'Active', done: 'Bifate', all: 'Toate' }[f]}</button>`).join('')}</div>
     <input class="search" type="search" id="search" placeholder="Caută în ${esc(c.name)}" value="${esc(ui.search)}">
@@ -1229,7 +1236,7 @@ function searchLayerHtml() {
     <div class="sl-in" style="--i:${i++}"><div class="sl-title">Liste</div>
       <div class="group">${catsByActivity().map(c => {
         const n = activeCount(c);
-        return `<div class="catrow" data-act="search-cat" data-id="${c.id}"><div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
+        return `<div class="catrow" data-act="search-cat" data-id="${c.id}">${catIconHtml(c)}
           <div style="flex:1"><div class="catname">${esc(c.name)}</div></div>${n ? `<span class="badge" style="--c:${colorOf(c)}">${n}</span>` : ''}<span class="chev">${ICON.chev}</span></div>`;
       }).join('')}</div></div>`;
 }
@@ -1287,7 +1294,7 @@ function renderTabbar() {
     + missedDoses().length;
   if (!bar.querySelector('.pill')) {
     bar.innerHTML = `<span class="pill"></span>` + TABS.map(([id, label, icon]) =>
-      `<button data-tab="${id}">${ICON[icon]}<span>${label}</span><span class="tbadge hidden"></span></button>`).join('');
+      `<button data-tab="${id}">${tabIconHtml(id, ICON[icon])}<span>${label}</span><span class="tbadge hidden"></span></button>`).join('');
   }
   bar.querySelectorAll('button[data-tab]').forEach(b => {
     b.classList.toggle('on', b.dataset.tab === ui.tab);
@@ -1730,7 +1737,7 @@ function categorySheetHtml() {
       <button class="save" data-act="cat-save" ${d.name.trim() ? '' : 'disabled'}>Salvează</button></div>
     <div class="panel-body">
       <div class="form">
-        <div class="preview"><div class="caticon" style="--c:${col}">${d.icon}</div><input type="text" data-bind="c.name" placeholder="Numele listei" value="${esc(d.name)}"></div>
+        <div class="preview">${catIconHtml({ ...d, color: d.color })}<input type="text" data-bind="c.name" placeholder="Numele listei" value="${esc(d.name)}"></div>
         <div class="colors">${PALETTE.map((p, i) => `<button class="${d.color === i ? 'on' : ''}" style="--c:${p}" data-act="c-color" data-v="${i}">${d.color === i ? '✓' : ''}</button>`).join('')}</div>
         <div class="emojis" style="--c:color-mix(in srgb, ${col} 30%, transparent)">${EMOJIS.map(e => `<button class="${d.icon === e ? 'on' : ''}" data-act="c-icon" data-v="${e}">${e}</button>`).join('')}</div>
       </div>
@@ -1936,7 +1943,7 @@ function searchResultsHtml(raw) {
   let html = '';
   if (listHits.length) {
     html += `<div class="sl-in"><div class="sec-title">Liste</div><div class="group">${listHits.map(c => `
-      <div class="catrow" data-act="search-cat" data-id="${c.id}"><div class="caticon" style="--c:${colorOf(c)}">${c.icon}</div>
+      <div class="catrow" data-act="search-cat" data-id="${c.id}">${catIconHtml(c)}
       <div style="flex:1"><div class="catname">${esc(c.name)}</div></div><span class="chev">${ICON.chev}</span></div>`).join('')}</div></div>`;
   }
   return html + resultsByList(hits);
@@ -1965,7 +1972,7 @@ const appUrlOf = c => ({ 'concediu/': 'concediu.html', 'birou/': 'birou.html' }[
 function screenApp(c) {
   return `<div class="appview">
     <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div><div class="right"></div></div>
-    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    <h1>${catTitleIcon(c)}${esc(c.name)}</h1>
     <iframe id="appframe" data-cat="${c.id}" src="${esc(appUrlOf(c))}" title="${esc(c.name)}"></iframe>
   </div>`;
 }
@@ -2145,7 +2152,7 @@ function screenShopping(c) {
   return `
     <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
       <div class="right"><button class="iconbtn" data-act="cat-menu" data-id="${c.id}">${ICON.more}</button></div></div>
-    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    <h1>${catTitleIcon(c)}${esc(c.name)}</h1>
     <div class="quickadd" style="--c:${col}">
       <button class="qa-plus" data-act="qa-add" data-id="${c.id}" aria-label="Adaugă">${ICON.plus}</button>
       <input id="quickadd" type="text" placeholder="Adaugă un produs" autocomplete="off" autocorrect="off" enterkeyhint="done" data-cat="${c.id}">
@@ -2423,7 +2430,7 @@ function screenMeds(c) {
   return `
     <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
       <div class="right"><button class="iconbtn fill" style="background:${col}" data-act="new" data-id="${c.id}">${ICON.plus}</button></div></div>
-    <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
+    <h1>${catTitleIcon(c)}${esc(c.name)}</h1>
     ${missedDosesHtml()}
     ${doses.length ? `
       <div class="medtoday" style="--c:${col}">
@@ -3229,6 +3236,12 @@ document.addEventListener('click', ev => {
       closeSheet(); break;
     case 'export': exportData(); break;
     case 'theme': applyTheme(el.dataset.v); render(); break;
+    case 'icon-style': {
+      (db.settings ||= {}).iconStyle = el.dataset.v; save();
+      document.getElementById('tabbar').innerHTML = '';   // rebuild the bottom bar with the new icons
+      render();
+      break;
+    }
     case 'set-pack': ui.sheet = { type: 'trippack' }; renderSheet(); break;
     case 'wipe-all':
       openActions('Ștergi toate listele și toate datele din MindMe? Nu se poate anula. Fă înainte un backup dacă vrei să le păstrezi.', [

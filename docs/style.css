@@ -740,3 +740,33 @@ button.tile.tog.on { background: color-mix(in srgb, var(--tc) 30%, var(--card));
 /* day buttons: up to 3 per row, and the last row always stretches to the full width (no empty gap) */
 .tr-days { display: flex; flex-wrap: wrap; }
 .tr-days button { flex: 1 1 calc(33.333% - 8px); min-width: calc(33.333% - 8px); }
+
+/* ---------- icon styles (Setări → Iconițe), tuned for light and dark ---------- */
+.caticon .glyph { width: 25px; height: 25px; }
+.caticon.gl-insigna { color: #fff; }
+.caticon.gl-linie, .caticon.gl-duo { background: color-mix(in srgb, var(--c) 15%, var(--card)); color: var(--c); }
+.caticon.gl-plin { --cut: color-mix(in srgb, var(--c) 15%, var(--card)); background: var(--cut); color: var(--c); }
+.preview .caticon .glyph { width: 32px; height: 32px; }
+h1 .emo.glt { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; vertical-align: -6px; margin-right: 8px; color: var(--c);
+  background: color-mix(in srgb, var(--c) 15%, var(--card)); --cut: color-mix(in srgb, var(--c) 15%, var(--card)); }
+h1 .emo.glt.gl-insigna { background: var(--c); color: #fff; }
+h1 .emo.glt .glyph { width: 23px; height: 23px; }
+#tabbar .tabglyph { width: 25px; height: 25px; --cut: color-mix(in srgb, var(--card) 70%, transparent); }
+#tabbar button.on .tabglyph { --cut: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+/* the bottom bar labels and icons must read well on the light glass too */
+#tabbar button { color: color-mix(in srgb, var(--text) 58%, transparent); }
+#tabbar button.on, #tabbar button.over { color: var(--accent); }
+/* the picker: five equal tiles, one full row */
+.iconpick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.iconpick button { display: grid; justify-items: center; gap: 6px; padding: 10px 2px 8px; border-radius: 12px; background: var(--card2); }
+.iconpick button.on { box-shadow: inset 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.iconpick .caticon { width: 36px; height: 36px; border-radius: 10px; font-size: 19px; }
+.iconpick .caticon .glyph { width: 22px; height: 22px; }
+.iconpick .ip-l { font-size: 11.5px; font-weight: 600; line-height: 1.15; text-align: center; }
+
+/* glyph colour with enough contrast: a bit darker on light, a bit lighter on dark */
+.caticon.gl-linie, .caticon.gl-duo, .caticon.gl-plin, h1 .emo.glt:not(.gl-insigna) { --gc: color-mix(in srgb, var(--c) 78%, #000); color: var(--gc); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.caticon.gl-linie, .caticon.gl-duo, .caticon.gl-plin, h1 .emo.glt:not(.gl-insigna)) { --gc: color-mix(in srgb, var(--c) 72%, #fff); } }
+:root[data-theme="dark"] :is(.caticon.gl-linie, .caticon.gl-duo, .caticon.gl-plin, h1 .emo.glt:not(.gl-insigna)) { --gc: color-mix(in srgb, var(--c) 72%, #fff); }
+.caticon.gl-linie, .caticon.gl-duo { background: color-mix(in srgb, var(--c) 16%, var(--card)); }
+.caticon.gl-insigna .glyph { width: 26px; height: 26px; }
