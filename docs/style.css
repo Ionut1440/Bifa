@@ -757,7 +757,7 @@ h1 .emo.glt .glyph { width: 23px; height: 23px; }
 #tabbar button { color: color-mix(in srgb, var(--text) 58%, transparent); }
 #tabbar button.on, #tabbar button.over { color: var(--accent); }
 /* the picker: five equal tiles, one full row */
-.iconpick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.iconpick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .iconpick button { display: grid; justify-items: center; gap: 6px; padding: 10px 2px 8px; border-radius: 12px; background: var(--card2); }
 .iconpick button.on { box-shadow: inset 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
 .iconpick .caticon { width: 36px; height: 36px; border-radius: 10px; font-size: 19px; }

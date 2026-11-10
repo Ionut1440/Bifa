@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-225233';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-225751';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -970,8 +970,7 @@ function screenSettings() {
     <div class="group setgroup" style="margin-top:10px">
       <div class="setrow col"><div class="setrow-top"><span class="seticon">🎨</span><span class="setlbl">Iconițe</span></div>
         <div class="iconpick">${ICON_STYLES.map(([k, l]) => `<button class="${iconStyle() === k ? 'on' : ''}" data-act="icon-style" data-v="${k}">
-          <span class="ip-demo">${k === 'emoji' ? '<span class="caticon" style="--c:var(--accent)">📋</span>'
-            : `<span class="caticon gl-${k}" style="--c:var(--accent)">${glyphSvg('liste', k)}</span>`}</span><span class="ip-l">${l}</span></button>`).join('')}</div></div>
+          <span class="ip-demo"><span class="caticon gl-${k}" style="--c:var(--accent)">${glyphSvg('liste', k)}</span></span><span class="ip-l">${l}</span></button>`).join('')}</div></div>
     </div>
 
     <div class="sec-title">Liste</div>

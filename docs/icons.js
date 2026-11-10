@@ -24,9 +24,13 @@ const GLYPHS = {
 };
 // in "Plin", these strokes sit on top of a filled shape → drawn in the background colour (cut out)
 const GLYPH_CUT = new Set(['facut', 'comenzi', 'plati', 'notite', 'medicamente', 'concediu', 'birou', 'bilet', 'bagaj', 'calendar']);
-const ICON_STYLES = [['emoji', 'Emoji'], ['linie', 'Linie fină'], ['plin', 'Plin'], ['duo', 'Duoton'], ['insigna', 'Insignă']];
+const ICON_STYLES = [['linie', 'Linie fină'], ['plin', 'Plin'], ['duo', 'Duoton'], ['insigna', 'Insignă']];   // emoji style removed (the user didn't want it)
 
-function iconStyle() { try { return (db.settings && db.settings.iconStyle) || 'emoji'; } catch (e) { return 'emoji'; } }
+function iconStyle() {
+  let st = 'insigna';
+  try { st = (db.settings && db.settings.iconStyle) || 'insigna'; } catch (e) { /* data still loading */ }
+  return ICON_STYLES.some(([k]) => k === st) ? st : 'insigna';   // the old 'emoji' choice becomes Insignă
+}
 
 // one glyph as SVG in the given style; colours come from CSS: currentColor, and --cut for "Plin" cut-outs
 function glyphSvg(key, style, cls = '') {
