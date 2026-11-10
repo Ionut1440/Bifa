@@ -351,8 +351,8 @@ body.searching #fixhead { padding-bottom: 0; }
   background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 60%, transparent), transparent); }
 #fixhead h1 { margin-bottom: 8px; }
 #fixhead .hrow h1 { margin: 2px 0 6px; }
-#app.searching .sfield { background: rgba(118,118,128,.17); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
-#app.searching .scancel { max-width: 110px; opacity: 1; margin-left: 12px; }
+#app.searching .sfield, body.searching #fixhead .sfield { background: rgba(118,118,128,.17); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+#app.searching .scancel, body.searching #fixhead .scancel { max-width: 110px; opacity: 1; margin-left: 12px; }
 #app.searching .screen-body { display: none; }
 #app:not(.searching) .searchlayer { display: none; }
 .screen-body.fadein { animation: slIn .32s cubic-bezier(.2,.9,.3,1) both; }
@@ -698,3 +698,6 @@ html { hyphens: manual; -webkit-hyphens: manual; }
    once you scroll, a thin hairline like iOS navigation bars — no blurred fade */
 #fixhead::after { bottom: 0; height: 0; background: none; border-bottom: .5px solid transparent; transition: border-color .2s; }
 body.scrolled #fixhead::after { border-bottom-color: var(--line); }
+
+/* the search bar is pinned too, right under the title */
+#fixhead .sbar { margin-bottom: 8px; }

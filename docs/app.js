@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-211800';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-212442';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -1036,7 +1036,7 @@ function pinHeader(app) {
   const parts = [];
   if (!document.body.classList.contains('inapp')) {
     const hrow = app.querySelector('.mainhead .hrow');
-    if (hrow) parts.push(hrow);
+    if (hrow) { parts.push(hrow); const sb = app.querySelector('.mainhead .sbar'); if (sb) parts.push(sb); }
     else {
       const tb = app.querySelector(':scope > .topbar');
       if (tb) { parts.push(tb); const h1 = tb.nextElementSibling; if (h1 && h1.tagName === 'H1') parts.push(h1); }
