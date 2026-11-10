@@ -189,6 +189,7 @@
   .legenda span { display: flex; align-items: center; gap: 6px; }
   .legenda i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
   .info { margin-top: 12px; font-size: 14px; line-height: 1.4; color: var(--text); background: color-mix(in srgb, var(--accent) 10%, var(--card)); border-radius: 12px; padding: 10px 12px; min-height: 40px; }
+  .info:empty { display: none; }
   .sarb-lista { margin: -2px 0; }
   .sarb-lista div { display: flex; justify-content: space-between; gap: 10px; padding: 11px 0; border-top: .5px solid var(--line); font-size: 15px; }
   .sarb-lista div:first-child { border-top: 0; }
@@ -293,7 +294,7 @@
         <span><i style="background:var(--co-trecut)"></i>Concediu luat</span>
         <span><i style="background:var(--sarb-bg);box-shadow:inset 0 0 0 1px var(--sarb)"></i>Sărbătoare legală</span>
       </div>
-      <div class="info" id="info">Atinge o zi lucrătoare ca s-o marchezi (sau s-o demarchezi) ca zi de concediu.</div>
+      <div class="info" id="info"></div>
     </div>
     <div class="sec-title" id="titluSarbLuna"></div>
     <div class="card">
@@ -559,7 +560,6 @@ function deseneazaSold() {
   const per = perioadePlanificate();
   html += `<div class="sec-title">Concedii planificate</div><div class="card">
     ${per || `<div class="gol-frumos"><div class="ico-mare">🏝️</div><b>Nimic planificat încă</b>
-      <p>Alege o idee sau marchează zilele în calendar.</p>
       <div class="chipuri"><button class="chip activ" data-mergi="idei">🌴 Vezi idei</button>
       <button class="chip" data-mergi="cal">📅 Calendar</button></div></div>`}</div>
     <div class="sec-title">Bine de știut</div>
@@ -613,9 +613,8 @@ function clickZi(d) {
 function deseneazaIdei() {
   $("chipuriIdei").innerHTML = [AN_AZI, AN_AZI + 1].map(a => `<button class="chip ${a === anIdei ? "activ" : ""}" data-an-idei="${a}">${a}</button>`).join("");
   const s = sold(anIdei), lista = idei(anIdei);
-  $("notaIdei").innerHTML = `Ai <b>${s.ramase}</b> ${s.ramase === 1 ? "zi disponibilă" : "zile disponibile"} în ${anIdei}. ` +
-    `Ideile de mai jos leagă sărbătorile legale de weekend, ca să obții cât mai multe zile libere cu cât mai puține zile de concediu.`;
-  if (!lista.length) { $("listaIdei").innerHTML = `<div class="card gol">Nu mai sunt sărbători legale în ${anIdei}. Încearcă anul următor.</div>`; return; }
+  $("notaIdei").innerHTML = `Ai <b>${s.ramase}</b> ${s.ramase === 1 ? "zi disponibilă" : "zile disponibile"} în ${anIdei}.`;
+  if (!lista.length) { $("listaIdei").innerHTML = `<div class="card gol">Nu mai sunt sărbători legale în ${anIdei}.</div>`; return; }
   $("listaIdei").innerHTML = lista.map((v, i) => {
     const plan = v.co.length && v.co.every(k => date.zile[k]);
     let banda = "";

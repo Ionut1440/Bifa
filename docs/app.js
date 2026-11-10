@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-212920';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-213232';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -140,7 +140,16 @@ function load() {
 function normText(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
 
 // store aisles, in the order you walk through a shop; keywords without diacritics
+// all aisles: the built-in ones, then the ones you made yourself, and "Altele" last
 function aisles() {
+  const base = builtinAisles();
+  let mine = [];
+  try { mine = (db?.settings?.myAisles || []).map(a => [a.name, a.icon || '🏷️', '']); } catch (e) { /* data still loading */ }
+  const other = base.pop();
+  return [...base, ...mine.filter(m => !base.some(b => normText(b[0]) === normText(m[0]))), other];
+}
+const AISLE_ICONS = ['🏷️', '🌱', '🥫', '🧀', '🍷', '🍺', '🥩', '🐟', '🍞', '🍬', '🧃', '🥚', '🍝', '🧴', '🧹', '🎁', '🐶', '💡', '🌸', '🛠️'];
+function builtinAisles() {
   return [
     ['Fructe și legume', '🥦', 'mere mar banane banana portocal lamai lamaie lime mandarin grepfrut struguri capsuni afine zmeura pere para kiwi ananas pepene piersic nectarin caise cirese visine prune avocado mango rodie rosii rosie cherry castrav ardei ceapa usturoi cartof morcov varza salata spanac broccoli brocoli conopid dovlec vinete ciuperci patrunjel marar leustean telina ridichi sfecla ghimbir rucola verdeata fructe legume lamaita praz'],
     ['Brutărie', '🥖', 'paine franzel bagheta chifl covrigi proaspeti corn croissant lipie toast pandispan cozonac blat chec placinta merdenea foietaj'],
@@ -771,7 +780,7 @@ function screenToday() {
       ${tile('Azi', td.length + dosesAhead, 'var(--orange)')}
       ${tile('7 zile', wk.length, 'var(--blue)')}
     </div>
-    ${!ov.length && !td.length && !wk.length && !dosesOn(new Date()).length ? `<div class="empty"><div class="big">☀️</div><b>Ziua e liberă</b>Nimic întârziat sau programat în zilele următoare.</div>` : ''}
+    ${!ov.length && !td.length && !wk.length && !dosesOn(new Date()).length ? `<div class="empty"><div class="big">☀️</div><b>Ziua e liberă</b></div>` : ''}
     ${missedDosesHtml()}
     ${typeof tripTodayHtml === 'function' ? tripTodayHtml() : ''}
     ${medsTodayHtml()}
@@ -902,7 +911,6 @@ function screenSettings() {
     <div class="group setgroup">
       ${row('🧳', 'Lista mea standard de bagaj', chev, 'set-pack')}
       ${row('🏷️', 'Produsele mele (cumpărături)', chev, 'my-products')}
-      ${row('📋', 'Liste noi și reguli', chev, 'set-lists')}
     </div>
 
     <div class="sec-title">Date și backup</div>
@@ -912,7 +920,6 @@ function screenSettings() {
       ${row('💾', 'Spațiu folosit', `<span class="setval">${storageUsed()}</span>`)}
       ${row('🗂️', 'Conținut', `<span class="setval">${nLists} ${nLists === 1 ? 'listă' : 'liste'} · ${nItems} ${nItems === 1 ? 'element' : 'elemente'}</span>`)}
     </div>
-    <div class="footnote">Datele stau doar pe telefonul tău: fără cont, fără server. Fă din când în când un backup și salvează-l în Fișiere sau în iCloud Drive.</div>
     <div class="group setgroup" style="margin-top:14px">
       ${row('🗑️', '<span style="color:var(--red)">Șterge toate datele</span>', '', 'wipe-all')}
     </div>
@@ -966,9 +973,7 @@ function categoryListHtml(c) {
   else if (c.groupMode === 'group' && c.usesGroups) sections = sectionsByGroup(vis);
   else sections = sectionsFlat(vis);
   if (!sections.length) {
-    return `<div class="empty"><div class="big">${c.icon}</div><b>${ui.filter === 'done' ? 'Nimic bifat încă' : 'Nimic aici'}</b>
-      ${ui.search ? `Niciun rezultat pentru „${esc(ui.search)}”.` : 'Apasă + ca să adaugi ceva.'}
-      ${!ui.search && ui.filter !== 'done' ? `<div class="mt"><button class="btn" style="background:${colorOf(c)}" data-act="new" data-id="${c.id}">Adaugă</button></div>` : ''}</div>`;
+    return `<div class="empty"><div class="big">${c.icon}</div><b>${ui.filter === 'done' ? 'Nimic bifat încă' : 'Nimic aici'}</b></div>`;
   }
   return sectionsHtml(sections, { showGroup: c.groupMode !== 'group', reorder: true });
 }
@@ -1014,8 +1019,8 @@ function screenReminders() {
   const notAdded = upcoming.filter(e => !alarmAdded(e)).length;
   return `
     ${mainHead('Remindere', `<button class="iconbtn fill" data-act="new-pick" data-rem="1">${ICON.plus}</button>`)}
-    ${notAdded ? `<div class="banner"><b>🔔 ${notAdded} ${notAdded === 1 ? 'reminder fără alarmă' : 'remindere fără alarmă'}</b>Apasă „+ Pune alarmă” ca să sune la ora aleasă, chiar dacă aplicația e închisă (se pune în Calendarul iPhone-ului).</div>` : ''}
-    ${!missed.length && !keys.length ? `<div class="empty"><div class="big">🔔</div><b>Niciun reminder</b>Adaugă unul cu + sau pune „Amintește-mi” la orice element.</div>` : ''}
+    ${notAdded ? `<div class="banner"><b>🔔 ${notAdded} ${notAdded === 1 ? 'reminder fără alarmă' : 'remindere fără alarmă'}</b></div>` : ''}
+    ${!missed.length && !keys.length ? `<div class="empty"><div class="big">🔔</div><b>Niciun reminder</b></div>` : ''}
     ${missed.length ? `<div class="sec-title red">Trecute, nebifate</div><div class="group">${missed.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : ''}
     ${keys.map(k => `<div class="sec-title">${esc(dayHeader(new Date(k)))}</div><div class="group">${sortByRem(days[k]).map(e => rowHtml(e, { showCat: true })).join('')}</div>`).join('')}`;
 }
@@ -1475,12 +1480,12 @@ function entrySheetHtml() {
       let sum = '';
       if (d.repeat === 'dates') {
         const n = d.repDates.length;
-        sum = n ? `Reminder în ${n} ${n === 1 ? 'zi' : 'zile'}, la ora ${(d.reminder.split('T')[1] || '')}. ` : 'Apasă pe zilele în care vrei reminderul. ';
+        sum = n ? `Reminder în ${n} ${n === 1 ? 'zi' : 'zile'}, la ora ${(d.reminder.split('T')[1] || '')}. ` : '';
       } else if (rep) {
         const last = remLast({ ...d });
         sum = last ? `Ultimul reminder: ${fLong.format(last)}, ${fTime.format(last)}. ` : 'Se repetă fără oprire. ';
       }
-      h += `<div class="ffoot" id="remsum">${esc(sum)}La „Salvează” se deschide Calendarul: apeși „Adaugă” și alarma sună chiar dacă aplicația e închisă.</div>`;
+      h += `<div class="ffoot" id="remsum">${esc(sum)}</div>`;
     }
     return h;
   };
@@ -1498,7 +1503,7 @@ function entrySheetHtml() {
       <div class="subedit"><span style="color:${col};font-size:22px;width:20px;text-align:center">+</span>
         <input type="text" id="newsub" placeholder="Adaugă (Enter pentru următorul)" enterkeyhint="next"></div>
     </div>
-    ${d.subs.length ? `<div class="ffoot">${done} din ${d.subs.length} bifate${c.subsAuto ? ' · se bifează singur când sunt toate' : ''}${d.subs.length > 1 ? ' · ține apăsat pe ☰ și trage ca să le muți' : ''}</div>` : ''}`);
+    ${d.subs.length ? `<div class="ffoot">${done} din ${d.subs.length} bifate</div>` : ''}`);
   }
 
   if (c.usesDir || c.usesVendor || c.usesTracking || c.usesAmount) {
@@ -1651,9 +1656,6 @@ function categorySheetHtml() {
 
       <div class="form" style="margin-top:14px"><div class="field"><span class="ico">🪄</span><span class="lbl">Copiază regulile de la</span>
         <select data-act-change="c-template"><option value="">alege…</option>${Object.entries(TEMPLATES).map(([k, t]) => `<option value="${k}">${t.icon} ${t.label}</option>`).join('')}</select></div></div>
-      <div class="ffoot">${d.kind === 'meds' ? 'Asta e o listă de medicamente: are câmpurile ei (doză, ore, zile, durata tratamentului).'
-        : d.kind === 'app' ? 'Asta e o aplicație din MindMe (concediu / zile la birou): are setările ei, în interior.'
-        : 'Ex: alege „Comenzi” ca să ai sumă, plătit/neplătit, AWB și produse; „Medicamente” pentru tratamente.'}</div>
       ${d.kind === 'meds' || d.kind === 'app' ? '' : `
 
       <div class="fhead">Ce câmpuri au elementele</div>
@@ -1684,7 +1686,6 @@ function categorySheetHtml() {
             <div class="order-btns"><button data-act="c-days" data-v="-1">−</button><button data-act="c-days" data-v="1">+</button></div></div>
           <div class="field"><span class="lbl">La ora</span><input type="time" data-bind="c.autoRemTime" value="${esc(d.autoRemTime)}"></div>` : ''}
       </div>
-      ${d.reminderMode !== 'off' && d.usesDeadline && d.autoRem ? '<div class="ffoot">Când pui un termen, reminderul se completează singur. Îl poți schimba oricând.</div>' : ''}
 
       <div class="fhead">Afișare și curățenie</div>
       <div class="form">
@@ -1814,7 +1815,7 @@ function statsHtml() {
     <div class="panel-head"><button data-act="sheet-close">Închide</button><div class="t">📊 ${esc(c.name)}</div><span style="min-width:70px"></span></div>
     <div class="panel-body">
       <div class="segin">${[['6', '6 luni'], ['12', '12 luni'], ['all', 'Tot']].map(([k, l]) => `<button class="${s.range === k ? 'on' : ''}" data-act="stats-range" data-v="${k}">${l}</button>`).join('')}</div>
-      ${!all.length ? `<div class="empty"><div class="big">📊</div><b>Încă nu sunt date</b>Adaugă elemente cu sumă și aici apar totalurile pe luni.</div>` : `
+      ${!all.length ? `<div class="empty"><div class="big">📊</div><b>Încă nu sunt date</b></div>` : `
       <div class="tiles">${tiles.join('')}</div>
       <div class="fhead">${c.usesDir ? 'De plătit' : 'Total'} pe luni (${esc(cur)})</div>
       <div class="form chart">
@@ -1843,14 +1844,14 @@ function openSearch() {
 }
 function searchResultsHtml(raw) {
   const q = norm(raw).trim();
-  if (!q) return `<div class="empty"><div class="big">🔍</div><b>Caută în toate listele</b>Titluri, detalii, produse, magazine, persoane, AWB, grupuri, sume. Merge și fără diacritice.</div>`;
+  if (!q) return `<div class="empty"><div class="big">🔍</div><b>Caută în toate listele</b></div>`;
   const listHits = cats().filter(c => norm(c.name).includes(q));
   const hits = db.entries.filter(e => catById(e.cat) && [
     e.title, e.details, e.vendor, e.group, e.tracking,
     e.hasAmount && e.amount ? fNum.format(e.amount) + ' ' + e.amount : '',
     ...(e.subs || []).map(s => s.title),
   ].some(t => norm(t).includes(q)));
-  if (!hits.length && !listHits.length) return `<div class="empty"><div class="big">🤷</div><b>Nimic găsit</b>Nu am găsit nimic pentru „${esc(raw.trim())}”.</div>`;
+  if (!hits.length && !listHits.length) return `<div class="empty"><div class="big">🤷</div><b>Nimic găsit</b></div>`;
   let html = '';
   if (listHits.length) {
     html += `<div class="sl-in"><div class="sec-title">Liste</div><div class="group">${listHits.map(c => `
@@ -1923,7 +1924,15 @@ function myProductsSheetHtml() {
         <div class="field"><span class="lbl">Raion</span><select id="mp-aisle">${opts(s.aisle || 'Altele')}</select></div>
       </div>
       <button class="btn block mt" data-act="mp-add">＋ Salvează produsul</button>
-      <div class="ffoot">Când scrii produsul în lista de cumpărături, ajunge singur la raionul ales aici. Produsele se adaugă și singure aici când muți ceva la alt raion.</div>
+      <div class="fhead">Adaugă un raion</div>
+      <div class="form">
+        <div class="field"><span class="ico">${s.aicon || '🏷️'}</span><input type="text" id="ma-name" placeholder="Nume (ex: Produse bio)" value="${esc(s.aname || '')}" autocomplete="off"></div>
+      </div>
+      <div class="quick wrap" style="--pink:var(--accent);padding:8px 0 0">${AISLE_ICONS.map(ic => `<button class="${(s.aicon || '🏷️') === ic ? 'on' : ''}" data-act="ma-icon" data-v="${ic}" style="font-size:18px;padding:5px 9px">${ic}</button>`).join('')}</div>
+      <button class="btn block mt" data-act="ma-add">＋ Salvează raionul</button>
+      ${(db.settings?.myAisles || []).length ? `<div class="fhead">Raioanele tale · ${db.settings.myAisles.length}</div><div class="form">${db.settings.myAisles.map(a => `<div class="field">
+          <span class="ico">${a.icon || '🏷️'}</span><span class="lbl">${esc(a.name)}</span>
+          <button class="x" data-act="ma-del" data-v="${esc(a.name)}" aria-label="Șterge" style="color:var(--muted);font-size:18px;width:30px">✕</button></div>`).join('')}</div>` : ''}
       <div class="fhead">${list.length ? `Produsele tale · ${list.length}` : 'Încă nu ai produse proprii'}</div>
       ${list.length ? `<div class="form">${list.map(p => `<div class="field">
           <span class="ico">${aisleIcon(p.aisle)}</span><span class="lbl">${esc(p.name)}</span>
@@ -2065,7 +2074,7 @@ function screenShopping(c) {
     ${total ? `<div class="medtoday" style="--c:${col};margin-top:14px">
         <div><div class="mt-l">În coș</div><div class="mt-v">${cart.length} din ${total}</div></div>
         <div class="mt-bar"><span style="width:${Math.round(cart.length / total * 100)}%"></span></div></div>` : ''}
-    ${!total ? `<div class="empty"><div class="big">🛒</div><b>Lista e goală</b>Scrie ce ai de luat mai sus și apasă Enter. Produsele se așază singure pe raioane.</div>` : ''}
+    ${!total ? `<div class="empty"><div class="big">🛒</div><b>Lista e goală</b></div>` : ''}
     ${!active.length && cart.length ? `<div class="banner" style="margin-top:12px"><b>Gata, ai luat tot! 🎉</b>Golește coșul când ajungi acasă.</div>` : ''}
     ${groups.map(g => `<div class="sec-title">${aisleIcon(g)} ${esc(g)} · ${by[g].length}</div>
       <div class="group">${sortManual(by[g]).map(e => rowHtml(e, { showGroup: false, reorder: 'shop' })).join('')}</div>`).join('')}
@@ -2204,7 +2213,6 @@ function missedDosesHtml() {
   const n = list.length;
   return `<div class="missedcard">
     <div class="mc-head">⚠️ ${n === 1 ? 'Ai uitat o doză' : `Ai uitat ${n} doze`}</div>
-    <div class="mc-sub">Le-ai luat și n-ai bifat? Apasă „Am luat-o”. Dacă nu, „Am sărit-o”.</div>
     ${list.slice(0, 10).map(x => `<div class="mrow">
       <div class="mrow-t"><b>💊 ${esc(x.e.title)}</b><span>${esc(fmtDay(x.day))} · ${esc(x.t)}${x.e.med.dose ? ' · ' + esc(x.e.med.dose) : ''}</span></div>
       <button class="mbtn ok" data-act="dose-set" data-id="${x.e.id}" data-k="${dkey(x.day)}" data-t="${x.t}" data-s="taken">Am luat-o</button>
@@ -2263,7 +2271,7 @@ function medHistoryHtml(e) {
       <div class="mh-legend"><span class="ok">luat tot</span><span class="part">parțial</span><span class="bad">uitat</span><span class="skip">sărit</span></div>
       ${detail}
     </div></div></div>
-    <div class="ffoot">Apasă pe o zi ca să vezi și să corectezi dozele ei.</div>`;
+    `;
 }
 
 function medAdherence(e) {
@@ -2340,8 +2348,7 @@ function screenMeds(c) {
         <div class="mt-bar"><span style="width:${Math.round(takenN / doses.length * 100)}%"></span></div>
       </div>
       ${doseRowsHtml(doses, today)}` : meds.length ? `<div class="banner" style="margin-top:6px"><b>Azi nu ai nimic de luat ✓</b></div>` : ''}
-    ${!meds.length ? `<div class="empty"><div class="big">💊</div><b>Niciun medicament încă</b>Adaugă unul cu +: doza, orele, câte zile (sau permanent) și îți arăt în fiecare zi ce ai de luat.
-      <div class="mt"><button class="btn" style="background:${col}" data-act="new" data-id="${c.id}">Adaugă medicament</button></div></div>` : ''}
+    ${!meds.length ? `<div class="empty"><div class="big">💊</div><b>Niciun medicament încă</b></div>` : ''}
     ${sec('Tratamente în curs', groups.active)}
     ${sec('Urmează', groups.future)}
     ${sec('Terminate', groups.finished)}
@@ -2427,7 +2434,6 @@ function medSheetHtml() {
       <div class="form" style="margin-top:18px">
         <div class="field"><span class="ico">🔔</span><span class="lbl">Alarmă la fiecare oră</span>${sw('m.alarm', d.alarm)}</div>
       </div>
-      <div class="ffoot">${d.alarm ? 'La salvare se deschide Calendarul o singură dată, pentru toate orele: apeși „Adaugă”. Alarmele se opresc singure la finalul tratamentului.' : 'Fără alarme: vezi dozele doar în aplicație.'}</div>
 
       ${!isNew && entryById(d.id) ? medHistoryHtml(entryById(d.id)) : ''}
       ${!isNew ? `<div class="form" style="margin-top:24px"><div class="field"><span class="ico">⏹</span><span class="lbl">Oprit (nu-l mai iau)</span>${sw('m.done', d.done)}</div></div>
@@ -2544,7 +2550,7 @@ function doseRowHtml(x) {
 function generalStatsHtml() {
   const s = ui.stats;
   const entries = db.entries.filter(e => catById(e.cat));
-  if (!entries.length) return `<div class="empty"><div class="big">📊</div><b>Încă nu sunt date</b>Adaugă câteva lucruri în liste și aici vezi cum stai.</div>`;
+  if (!entries.length) return `<div class="empty"><div class="big">📊</div><b>Încă nu sunt date</b></div>`;
   const { months, start } = rangeOf(s, entries.map(e => e.createdAt));
   const active = entries.filter(e => !e.done && !e.med);
   const overdueNow = active.filter(e => isOverdue(e) || reminderMissed(e)).length;
@@ -2781,7 +2787,7 @@ function moneyStatsHtml() {
   const word = metric === 'spent' ? 'Cheltuit' : 'Primit';
 
   return `
-      ${!all.length ? `<div class="empty"><div class="big">💰</div><b>Încă nu sunt sume</b>Adaugă plăți sau comenzi cu sumă și aici vezi cât ai cheltuit și cât ai primit.</div>` : `
+      ${!all.length ? `<div class="empty"><div class="big">💰</div><b>Încă nu sunt sume</b></div>` : `
       <div class="tiles">
         ${tile('Cheltuit', totals(pairs(spent)), 'var(--red)', 'mo-spent')}
         ${tile('Primit', totals(pairs(received)), 'var(--green)', 'mo-received')}
@@ -2992,7 +2998,7 @@ document.addEventListener('click', ev => {
     }
     case 'qa-pickaisle': {
       const c = catById(id); const name = el.dataset.v;
-      openActions(`În ce raion pui „${name}”? Îl țin minte pentru data viitoare.`, aisles().map(a => ({
+      openActions('Raion', aisles().map(a => ({
         label: a[0], icon: a[1],
         run: () => { learnProduct(name, a[0]); if (c && shopAdd(c, name, a[0])) { render(); toast(`${name} → ${a[0]}`); } },
       })), { grid: true });
@@ -3007,11 +3013,35 @@ document.addEventListener('click', ev => {
       break;
     }
     case 'mp-del': delete myProducts()[el.dataset.v]; save(); renderSheet(); break;
+    case 'ma-icon': s.aname = document.getElementById('ma-name')?.value || ''; s.name = document.getElementById('mp-name')?.value || ''; s.aicon = el.dataset.v; renderSheet(); break;
+    case 'ma-add': {
+      const n = (document.getElementById('ma-name')?.value || '').trim();
+      if (!n) { toast('Scrie numele raionului'); break; }
+      const name = n.charAt(0).toUpperCase() + n.slice(1);
+      if (aisles().some(a => normText(a[0]) === normText(name))) { toast(`Raionul „${name}” există deja`); break; }
+      ((db.settings ||= {}).myAisles ||= []).push({ name, icon: s.aicon || '🏷️' });
+      save(); s.aname = ''; s.aicon = ''; s.aisle = name; s.name = document.getElementById('mp-name')?.value || '';
+      renderSheet(); toast(`Raionul „${name}” e gata`);
+      break;
+    }
+    case 'ma-del': {
+      const name = el.dataset.v;
+      const n = db.entries.filter(e => e.group === name && isShopCat(catById(e.cat))).length;
+      openActions(`Ștergi raionul „${name}”?${n === 1 ? ' Produsul din el trece la „Altele”.' : n ? ` Cele ${n} produse din el trec la „Altele”.` : ''} Nu se poate anula.`, [
+        { label: '🗑 Șterge raionul', danger: true, run: () => {
+          db.settings.myAisles = (db.settings.myAisles || []).filter(a => a.name !== name);
+          db.entries.forEach(e => { if (e.group === name && isShopCat(catById(e.cat))) e.group = 'Altele'; });
+          Object.values(myProducts()).forEach(p => { if (p.aisle === name) p.aisle = 'Altele'; });
+          save(); ui.sheet = { type: 'myprod', name: '', aisle: 'Altele' }; renderSheet(); render();
+        } },
+      ]);
+      break;
+    }
     case 'qa-again': { const c = catById(id); if (c && shopAdd(c, el.dataset.v)) { render(); toast(`${el.dataset.v} adăugat`); } break; }
     case 'cart-clear': {
       const c = catById(id);
       const n = db.entries.filter(e => e.cat === id && e.done).length;
-      openActions(`Scoți din listă cele ${n} produse din coș?`, [
+      openActions(n === 1 ? 'Scoți din listă produsul din coș?' : `Scoți din listă cele ${n} produse din coș?`, [
         { label: '🛒 Golește coșul', danger: true, run: () => { db.entries = db.entries.filter(e => !(e.cat === id && e.done)); save(); render(); toast('Coșul e gol'); } },
       ]);
       break;
@@ -3080,7 +3110,7 @@ document.addEventListener('click', ev => {
         { label: 'Șterge bifatele', danger: true, run: () => {
           const n = db.entries.filter(e => e.cat === c.id && e.done).length;
           if (!n) { toast('Nu ai nimic bifat aici'); return; }
-          if (confirm(`Ștergi cele ${n} elemente bifate din ${c.name}?`)) { db.entries = db.entries.filter(e => !(e.cat === c.id && e.done)); save(); render(); }
+          if (confirm(n === 1 ? `Ștergi elementul bifat din ${c.name}?` : `Ștergi cele ${n} elemente bifate din ${c.name}?`)) { db.entries = db.entries.filter(e => !(e.cat === c.id && e.done)); save(); render(); }
         } },
       ]);
       break;
@@ -3092,7 +3122,6 @@ document.addEventListener('click', ev => {
     case 'export': exportData(); break;
     case 'theme': applyTheme(el.dataset.v); render(); break;
     case 'set-pack': ui.sheet = { type: 'trippack' }; renderSheet(); break;
-    case 'set-lists': switchTab('lists'); break;
     case 'wipe-all':
       openActions('Ștergi toate listele și toate datele din MindMe? Nu se poate anula. Fă înainte un backup dacă vrei să le păstrezi.', [
         { label: '⬇️ Salvează întâi un backup', run: () => exportData() },
@@ -3443,7 +3472,7 @@ function confirmSwipeDelete(kind, id) {
     const c = catById(id);
     if (!c) return;
     const n = db.entries.filter(e => e.cat === id).length;
-    openActions(`Ștergi lista „${c.name}”${n ? ` și cele ${n} elemente din ea` : ''}? Nu se poate anula.`, [
+    openActions(`Ștergi lista „${c.name}”${n === 1 ? ' și elementul din ea' : n ? ` și cele ${n} elemente din ea` : ''}? Nu se poate anula.`, [
       { label: '🗑 Șterge lista', danger: true, run: () => {
         const withAlarm = db.entries.filter(e => e.cat === id && alarmUpcoming(e));
         if (withAlarm.length) setTimeout(() => calendarLeftover(withAlarm), 350);

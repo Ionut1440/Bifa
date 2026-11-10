@@ -367,8 +367,7 @@ function screenTrips(c) {
     <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
       <div class="right"><button class="iconbtn fill" style="background:${col}" data-act="tr-new" data-id="${c.id}">${ICON.plus}</button></div></div>
     <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
-    ${!trips.length ? `<div class="empty"><div class="big">🧳</div><b>Nicio vacanță încă</b>Adaugă una cu +: destinația și zilele. Apoi îți faci programul pe zile, pui biletele, lista de bagaj și bugetul.
-      <div class="mt"><button class="btn" style="background:${col}" data-act="tr-new" data-id="${c.id}">Planifică o vacanță</button></div></div>` : ''}
+    ${!trips.length ? `<div class="empty"><div class="big">🧳</div><b>Nicio vacanță încă</b></div>` : ''}
     ${sec('Acum în vacanță', by.now)}${sec('Urmează', by.future)}${sec('Trecute', by.past)}`;
 }
 
@@ -435,7 +434,7 @@ function tripProgramHtml(e) {
       <input id="tr-idea" type="text" placeholder="Scrie și Enter, sau + pentru detalii" autocomplete="off" enterkeyhint="done">
     </div>
     <div class="quick wrap" style="--pink:var(--accent);padding:8px 0 0">${['restaurant', 'cafe', 'museum', 'sight', 'bar', 'beach', 'shop'].map(k => `<button data-act="tr-idea-type" data-v="${k}" class="${(ui.trip.ideaType || 'restaurant') === k ? 'on' : ''}">${TT[k].icon} ${TT[k].label}</button>`).join('')}</div>
-    ${ideasHtml || '<div class="footnote">Notează aici locurile pe care vrei să le încerci; apoi le pui pe o zi și o oră.</div>'}`;
+    ${ideasHtml}`;
 }
 
 function tripTicketsHtml(e) {
@@ -464,10 +463,9 @@ function tripTicketsHtml(e) {
   };
   return `
     <button class="btn block" data-act="tr-tickets-files">📎 Adaugă bilete din fișiere (PDF sau poze)</button>
-    <div class="ffoot">Poți alege mai multe deodată: citesc din fiecare zborul / trenul, traseul, data, orele, codul și prețul.</div>
-    ${tickets.length ? `<div class="tk-list">${tickets.map(card).join('')}</div>` : `<div class="empty"><div class="big">🎫</div><b>Niciun bilet încă</b>Adaugă zboruri, trenuri, cazări sau muzee: pune PDF-ul sau o poză cu biletul și completez singur datele din el.</div>`}
+    ${tickets.length ? `<div class="tk-list">${tickets.map(card).join('')}</div>` : `<div class="empty"><div class="big">🎫</div><b>Niciun bilet încă</b></div>`}
     <div class="sec-title" style="margin-top:24px">📄 Documente</div>
-    ${docs.length ? `<div class="tk-list">${docs.map(card).join('')}</div>` : '<div class="footnote" style="margin-top:0">Pașaport, buletin, asigurare, permis — pune o poză, ca să le ai la îndemână.</div>'}
+    ${docs.length ? `<div class="tk-list">${docs.map(card).join('')}</div>` : ''}
 
     <button class="btn light block mt" data-act="tr-add-doc">＋ Adaugă document</button>`;
 }
@@ -513,7 +511,7 @@ function tripBudgetHtml(e) {
       const l = items.filter(it => (TT[it.type]?.group || 'other') === g);
       return l.length ? `<div class="sec-title">${title} · ${esc(totals(pairs(l)))}</div><div class="group">${l.map(it => itemRow(it, { showDay: true })).join('')}</div>` : '';
     }).join('')}
-    ${!items.length ? '<div class="empty"><div class="big">💶</div><b>Încă nu ai costuri</b>Pune prețul la bilete, cazare, muzee sau mese și aici vezi totalul, ce ai plătit și ce mai ai de plătit.</div>' : ''}`;
+    ${!items.length ? '<div class="empty"><div class="big">💶</div><b>Încă nu ai costuri</b></div>' : ''}`;
 }
 
 // ---------- Azi: today's plan while you're on holiday ----------
@@ -598,7 +596,7 @@ function tripSheetHtml(type) {
             <button class="x" data-act="tr-file-del" data-fid="${f.id}" style="color:var(--muted);font-size:16px;width:30px">✕</button></div>`).join('')}
           ${fk ? `<button class="linkrow" data-act="tr-file-add">📎 ${fk.add}</button>` : ''}
         </div>
-        ${fk?.foot ? `<div class="ffoot">${fk.foot}</div>` : ''}`; })()}
+`; })()}
         ${!s.isNew ? `<div class="form" style="margin-top:20px"><div class="field"><span class="lbl">Făcut</span>${trSw('done', d.done)}</div></div>
           <button class="btn red block mt" data-act="tr-del-item">Șterge</button>` : ''}
       </div></div>`;
@@ -608,7 +606,6 @@ function tripSheetHtml(type) {
     return `<div class="overlay"></div><div class="panel">
       <div class="panel-head"><button data-act="sheet-close">Gata</button><div class="t">Lista mea standard</div><span style="min-width:70px"></span></div>
       <div class="panel-body">
-        <div class="ffoot" style="margin-top:0">Fiecare vacanță nouă primește automat lista asta. Ține apăsat ☰ și trage ca să schimbi ordinea.</div>
         <div class="form sublist">${list.map((x, i) => `<div class="subedit" data-row="${i}">
           <span style="width:20px;text-align:center">🧳</span>
           <input type="text" value="${esc(x)}" data-tb="pk:${i}">
@@ -678,10 +675,8 @@ async function storeFile(f) {
 function fileKind(type) {
   const g = TT[type]?.group;
   if (g === 'transport' || ['museum', 'sight', 'event', 'activity', 'tour'].includes(type))
-    return { head: 'Bilet', add: 'Adaugă bilet (poză sau PDF)', read: true,
-      foot: 'Pune PDF-ul sau poza biletului (poți alege mai multe): citesc din el cursa, traseul, orele, data și codul și completez câmpurile goale.' };
-  if (type === 'hotel') return { head: 'Rezervare', add: 'Adaugă rezervarea (poză sau PDF)', read: true,
-    foot: 'Pune confirmarea rezervării: citesc din ea datele, adresa și codul și completez câmpurile goale.' };
+    return { head: 'Bilet', add: 'Adaugă bilet (poză sau PDF)', read: true };
+  if (type === 'hotel') return { head: 'Rezervare', add: 'Adaugă rezervarea (poză sau PDF)', read: true };
   if (type === 'restaurant') return { head: 'Rezervare', add: 'Adaugă rezervarea (poză sau PDF)' };
   if (type === 'doc') return { head: 'Document', add: 'Adaugă documentul (poză sau PDF)' };
   return null;
