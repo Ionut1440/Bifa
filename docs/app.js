@@ -2,7 +2,8 @@
 /* MindMe – web app (PWA). Data stays on the phone (localStorage). */
 
 const KEY = 'bifa.data.v1';
-const VERSION = '1.0';
+const VERSION = '1.5';
+const BUILD_DATE = '10 noiembrie 2026';
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -822,12 +823,67 @@ function screenLists() {
     ${mainHead('Liste', `<button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button>`)}
     <div class="group">${rows || '<div class="empty">Nicio listă.</div>'}</div>
     <div class="footnote">Listele se ordonează singure: sus cele cu cele mai multe lucruri active, apoi alfabetic. Glisează spre stânga pentru setări, spre dreapta pentru ștergere.</div>
-    <div class="sec-title">Backup</div>
-    <div class="group">
-      <button class="linkrow" data-act="export">${ICON.download} Salvează o copie (backup)</button>
-      <button class="linkrow" data-act="import">${ICON.upload} Încarcă dintr-un backup</button>
+`;
+}
+
+// ---------- Setări ----------
+function themePref() { try { return localStorage.getItem('mindme.theme') || 'auto'; } catch (e) { return 'auto'; } }
+function applyTheme(t) {
+  try { if (t === 'auto') localStorage.removeItem('mindme.theme'); else localStorage.setItem('mindme.theme', t); } catch (e) { /* ignore */ }
+  const set = doc => { if (!doc) return; if (t === 'auto') doc.documentElement.removeAttribute('data-theme'); else doc.documentElement.setAttribute('data-theme', t); };
+  set(document);
+  document.querySelectorAll('iframe').forEach(f => { try { set(f.contentDocument); } catch (e) { /* ignore */ } });
+}
+function storageUsed() {
+  let n = 0;
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); n += (k.length + (localStorage.getItem(k) || '').length) * 2; } } catch (e) { /* ignore */ }
+  return n < 1048576 ? `${fNum.format(Math.max(1, Math.round(n / 1024)))} KB` : `${fNum.format(Math.round(n / 104857.6) / 10)} MB`;
+}
+function screenSettings() {
+  const th = themePref();
+  const nItems = db.entries.length, nLists = db.categories.length;
+  const row = (icon, label, right, act = '', extra = '') => `<div class="setrow" ${act ? `data-act="${act}" ${extra}` : ''}><span class="seticon">${icon}</span><span class="setlbl">${label}</span>${right}</div>`;
+  const chev = `<span class="chev">${ICON.chev}</span>`;
+  return `
+    ${mainHead('Setări', '')}
+    <div class="sec-title">Aspect</div>
+    <div class="group setgroup">
+      <div class="setrow col"><div class="setrow-top"><span class="seticon">🌗</span><span class="setlbl">Temă</span></div>
+        <div class="seg">${[['auto', 'Automat'], ['light', 'Luminos'], ['dark', 'Întunecat']].map(([k, l]) => `<button class="${th === k ? 'on' : ''}" data-act="theme" data-v="${k}">${l}</button>`).join('')}</div></div>
     </div>
-    <div class="footnote">Datele stau doar pe telefonul tău. Fă din când în când un backup (ex: în Fișiere / iCloud Drive). Versiunea ${VERSION}</div>`;
+    <div class="footnote">„Automat” urmează setarea telefonului (luminos ziua, întunecat seara, dacă așa ai ales în iPhone).</div>
+
+    <div class="sec-title">Liste</div>
+    <div class="group setgroup">
+      ${row('🧳', 'Lista mea standard de bagaj', chev, 'set-pack')}
+      ${row('🏷️', 'Produsele mele (cumpărături)', chev, 'my-products')}
+      ${row('📋', 'Liste noi și reguli', chev, 'set-lists')}
+    </div>
+
+    <div class="sec-title">Date și backup</div>
+    <div class="group setgroup">
+      ${row('⬇️', 'Salvează o copie (backup)', chev, 'export')}
+      ${row('⬆️', 'Încarcă dintr-un backup', chev, 'import')}
+      ${row('💾', 'Spațiu folosit', `<span class="setval">${storageUsed()}</span>`)}
+      ${row('🗂️', 'Conținut', `<span class="setval">${nLists} ${nLists === 1 ? 'listă' : 'liste'} · ${nItems} ${nItems === 1 ? 'element' : 'elemente'}</span>`)}
+    </div>
+    <div class="footnote">Datele stau doar pe telefonul tău: fără cont, fără server. Fă din când în când un backup și salvează-l în Fișiere sau în iCloud Drive.</div>
+    <div class="group setgroup" style="margin-top:14px">
+      ${row('🗑️', '<span style="color:var(--red)">Șterge toate datele</span>', '', 'wipe-all')}
+    </div>
+
+    ${!isStandalone() ? `<div class="sec-title">Pe telefon</div>
+    <div class="banner" style="margin-top:0"><b>📲 Pune MindMe pe ecranul telefonului</b>În Safari apasă <b style="display:inline">Partajează</b> (pătratul cu săgeată) → <b style="display:inline">Adaugă pe ecranul principal</b>. Așa se deschide ca o aplicație, pe tot ecranul.</div>` : ''}
+
+    <div class="sec-title">Despre</div>
+    <div class="about">
+      <img src="icons/icon-192.png" alt="" class="about-ico">
+      <div class="about-name">MindMe</div>
+      <div class="about-ver">Versiunea ${VERSION} · ${BUILD_DATE}</div>
+      <p class="about-txt">Organizatorul tău personal: ce ai de făcut, comenzi, plăți, notițe, remindere, medicamente, cumpărături, vacanțe, zile de concediu și zile la birou, într-o singură aplicație.</p>
+      <div class="about-dev">Dezvoltată de <b>Ionuț Mătanie</b></div>
+      <div class="about-copy">© 2026 Ionuț Mătanie. Toate drepturile rezervate.</div>
+    </div>`;
 }
 
 function moneyCard() {
@@ -934,7 +990,7 @@ function render() {
   if (ui.tab === 'lists' && ui.catId && catById(ui.catId)) html = screenCategory(catById(ui.catId));
   else if (ui.tab === 'lists') { ui.catId = null; html = screenLists(); }
   else if (ui.tab === 'reminders') html = screenReminders();
-  else if (ui.tab === 'stats') html = screenStats();
+  else if (ui.tab === 'settings') html = screenSettings();
   else html = screenToday();
   const isMain = !(ui.tab === 'lists' && ui.catId);
   if (isMain) html += `</div><div class="searchlayer" id="slayer">${ui.searching ? searchLayerHtml() : ''}</div>`;
@@ -1088,7 +1144,7 @@ document.addEventListener('focusout', () => {
 });
 // Bottom bar like WhatsApp: a "bubble" sits behind the selected tab and slides;
 // drag your finger along the bar and the bubble follows, let go to open that tab.
-const TABS = [['today', 'Azi', 'sun'], ['lists', 'Liste', 'grid'], ['reminders', 'Remindere', 'bell']];   // no Statistici: the user doesn't want statistics
+const TABS = [['today', 'Azi', 'sun'], ['lists', 'Liste', 'grid'], ['reminders', 'Remindere', 'bell'], ['settings', 'Setări', 'gear']];   // no Statistici: the user doesn't want statistics
 function renderTabbar() {
   const bar = document.getElementById('tabbar');
   const badge = db.entries.filter(e => !e.done && !e.med && catById(e.cat) && (isOverdue(e) || isDueToday(e) || reminderMissed(e))).length
@@ -2969,6 +3025,19 @@ document.addEventListener('click', ev => {
       if (s?.type === 'tripfile' && s.back) { ui.sheet = s.back; renderSheet(); break; }   // ticket viewer → back to the item
       closeSheet(); break;
     case 'export': exportData(); break;
+    case 'theme': applyTheme(el.dataset.v); render(); break;
+    case 'set-pack': ui.sheet = { type: 'trippack' }; renderSheet(); break;
+    case 'set-lists': switchTab('lists'); break;
+    case 'wipe-all':
+      openActions('Ștergi toate listele și toate datele din MindMe? Nu se poate anula. Fă înainte un backup dacă vrei să le păstrezi.', [
+        { label: '⬇️ Salvează întâi un backup', run: () => exportData() },
+        { label: '🗑 Șterge tot', danger: true, run: () => {
+          if (!confirm('Sigur? Toate datele vor fi șterse definitiv.')) return;
+          try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+          db = load(); save(); ui.catId = null; ui.trip = null; switchTab('today'); toast('Toate datele au fost șterse');
+        } },
+      ]);
+      break;
     case 'import': importData(); break;
 
     // entry editor

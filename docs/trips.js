@@ -572,10 +572,9 @@ function tripSheetHtml(type) {
           ${tripDays(t).map((x, i) => { const k = dkey(x), p = fLong.format(x).split(', ');
             return `<button class="${d.day === k ? 'on' : ''}" data-act="tr-day" data-v="${k}"><b>Ziua ${i + 1}</b><span>${esc(p[0])}<br>${esc(p[1] || '')}</span></button>`; }).join('')}
         </div>
-        <div class="tr-times">
-          <label class="tbox"><span>${tr ? 'Plecare' : d.type === 'hotel' ? 'Check-in' : 'Ora'}</span><input type="time" data-tb="time" value="${esc(d.time || '')}"></label>
-          <div class="tarrow">→</div>
-          <label class="tbox"><span>${tr ? 'Sosire' : d.type === 'hotel' ? 'Check-out' : 'Până la'}</span><input type="time" data-tb="endTime" value="${esc(d.endTime || '')}"></label>
+        <div class="form" style="margin-top:10px">
+          <label class="field"><span class="ico">🕐</span><span class="lbl">${tr ? 'Plecare' : d.type === 'hotel' ? 'Check-in' : 'Ora'}</span><input type="time" class="timepill" data-tb="time" value="${esc(d.time || '')}"></label>
+          <label class="field"><span class="ico">🏁</span><span class="lbl">${tr ? 'Sosire' : d.type === 'hotel' ? 'Check-out' : 'Până la'}</span><input type="time" class="timepill" data-tb="endTime" value="${esc(d.endTime || '')}"></label>
         </div>
         ${tr ? `<div class="fhead">Traseu</div><div class="form">
           <div class="field"><input type="text" data-tb="from" placeholder="De la${hint ? ' (ex: ' + hint[1] + ')' : ''}" value="${esc(d.from || '')}"></div>

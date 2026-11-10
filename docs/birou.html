@@ -2,6 +2,7 @@
 <html lang="ro">
 <head>
 <meta charset="utf-8">
+  <script>try{var t=localStorage.getItem("mindme.theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
@@ -30,13 +31,19 @@
     --birou: var(--green); --acasa: var(--blue); --concediu: var(--orange); --liber: var(--purple);
   }
   @media (prefers-color-scheme: dark) {
-    :root {
+:root:not([data-theme="light"]) {
       --bg: #000000; --card: #1C1C1E; --card2: #2C2C2E; --text: #F4F4F6; --muted: #8E8E96;
       --line: rgba(255, 255, 255, .12); --shadow: none; --pill: #636366; --verde-inchis: #3CCB8B;
       --fill2: rgba(118, 118, 128, .2); --field: #2C2C2E;
       color-scheme: dark;
     }
-  }
+}
+:root[data-theme="dark"] {
+      --bg: #000000; --card: #1C1C1E; --card2: #2C2C2E; --text: #F4F4F6; --muted: #8E8E96;
+      --line: rgba(255, 255, 255, .12); --shadow: none; --pill: #636366; --verde-inchis: #3CCB8B;
+      --fill2: rgba(118, 118, 128, .2); --field: #2C2C2E;
+      color-scheme: dark;
+    }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
   html { overflow-x: hidden; }
@@ -207,7 +214,10 @@
     z-index: 30; box-shadow: 0 8px 24px rgba(0,0,0,.25); transform: translateY(24px) scale(.96); opacity: 0;
     transition: transform .28s cubic-bezier(.2,.9,.3,1), opacity .2s; pointer-events: none; }
   #toast.show { transform: none; opacity: 1; }
-  @media (prefers-color-scheme: dark) { #toast { background: #3A3A3C; } }
+  @media (prefers-color-scheme: dark) {
+:root:not([data-theme="light"]) #toast { background: #3A3A3C; }
+}
+:root[data-theme="dark"] #toast { background: #3A3A3C; }
   @media (prefers-reduced-motion: reduce) { .grila, .luna { animation: none !important; } }
 </style>
 </head>
