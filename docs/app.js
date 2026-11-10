@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-233755';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-234655';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -1163,7 +1163,16 @@ function pinHeader(app) {
     if (hrow) { parts.push(hrow); const sb = app.querySelector('.mainhead .sbar'); if (sb) parts.push(sb); }
     else {
       const tb = app.querySelector(':scope > .topbar');
-      if (tb) { parts.push(tb); const h1 = tb.nextElementSibling; if (h1 && h1.tagName === 'H1') parts.push(h1); }
+      if (tb) {
+        parts.push(tb);
+        const h1 = tb.nextElementSibling;
+        if (h1 && h1.tagName === 'H1') {
+          parts.push(h1);
+          // the line under the title (e.g. a trip's dates) belongs to the title: pinned with it, never cut off
+          const sub = h1.nextElementSibling;
+          if (sub && sub.classList.contains('sub')) parts.push(sub);
+        }
+      }
     }
   }
   parts.forEach(p => fh.appendChild(p));
