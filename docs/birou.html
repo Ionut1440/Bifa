@@ -136,7 +136,7 @@
   .luna.din-stanga { animation: dinStanga .26s cubic-bezier(.2,.9,.3,1); }
   @keyframes dinDreapta { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes dinStanga { from { transform: translateX(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
-  .grila .cap { text-align: center; font-size: 9.5px; font-weight: 700; letter-spacing: -.2px; white-space: nowrap; color: var(--muted); padding: 2px 0 2px; }
+  .grila .cap { text-align: center; font-size: 9px; font-weight: 700; letter-spacing: -.35px; white-space: nowrap; color: var(--muted); padding: 2px 0 2px; }
   .grila .cap.we { opacity: .55; }
   .zi { aspect-ratio: 1 / 1; width: 100%; max-width: 46px; justify-self: center; display: grid; place-items: center;
     font-size: 15px; font-weight: 600; border-radius: 50%; cursor: pointer; font-variant-numeric: tabular-nums;
@@ -173,10 +173,12 @@
   .kpi small { font-size: 12px; font-weight: 700; color: var(--tc); line-height: 1.2; }
   .kpi b.ok, .kpi b.rau { color: var(--text); }
   .tabelcard { padding: 2px 0; margin-top: 10px; overflow: hidden; }
-  table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
-  th { text-align: right; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; padding: 9px 14px 7px 4px; }
-  th:first-child, td:first-child { text-align: left; padding-left: 14px; }
-  td { padding: 11px 14px 11px 4px; border-top: .5px solid var(--line); text-align: right; transition: background .15s; }
+  /* every column fits on the screen, read left to right */
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 15px; font-variant-numeric: tabular-nums; }
+  th { text-align: left; vertical-align: bottom; font-size: 11px; font-weight: 700; line-height: 1.2; color: var(--muted); padding: 10px 6px 7px; }
+  th:first-child, td:first-child { padding-left: 14px; width: 29%; }
+  th:nth-child(2) { width: 22%; } th:nth-child(3) { width: 20%; } th:nth-child(4) { width: 15%; } th:nth-child(5) { width: 14%; }
+  td { padding: 11px 6px; border-top: .5px solid var(--line); text-align: left; transition: background .15s; }
   tr.luna-rand { cursor: pointer; }
   tr.luna-rand:active td { background: var(--card2); }
   tr.selectat td { background: color-mix(in srgb, var(--accent) 11%, var(--card)); font-weight: 700; }
@@ -264,7 +266,7 @@
   <section>
     <div class="kpi" id="kpi"></div>
     <div class="card tabelcard">
-      <table><thead><tr><th>Luna</th><th>Lucrătoare</th><th>Concediu</th><th>Birou</th><th>Bifat</th></tr></thead>
+      <table><thead><tr><th>Luna</th><th>Zile<br>lucrătoare</th><th>Zile de<br>concediu</th><th>Zile la<br>birou</th><th>Bifate</th></tr></thead>
         <tbody id="tabelAn"></tbody></table>
     </div>
   </section>
