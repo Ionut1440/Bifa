@@ -516,7 +516,32 @@ function toggleSub(e, sid) {
   delete e._autoBy;
   save();
 }
-function deleteEntry(id) { db.entries = db.entries.filter(e => e.id !== id); save(); }
+function deleteEntry(id) {
+  const e = entryById(id);
+  db.entries = db.entries.filter(x => x.id !== id);
+  save();
+  if (e && alarmUpcoming(e)) setTimeout(() => calendarLeftover([e]), 350);
+}
+// an alarm that would still ring (a past one-time alarm is harmless and not worth a message)
+const alarmUpcoming = e => alarmAdded(e) && (e.med ? (typeof medStatus !== 'function' || medStatus(e).state !== 'finished')
+  : (e.repeat && e.repeat !== 'none') || (parseLocal(e.reminder) || 0) > new Date());
+// A web app is not allowed to delete events from the iPhone Calendar. So when something with an alarm is deleted,
+// say so right away and open the Calendar on that day, where the event is removed with two taps.
+function alarmDate(e) {
+  if (e.med) return parseLocal((e.med.start || dkey(new Date())) + 'T' + (e.med.times?.[0] || '08:00'));
+  return (typeof nextReminder === 'function' && nextReminder(e)) || parseLocal(e.reminder) || new Date();
+}
+function calendarLeftover(list) {
+  if (!list.length) return;
+  const d = alarmDate(list[0]);
+  const what = list.length === 1 ? `„${list[0].title}” avea o alarmă în Calendar (${fmtDayTime(d)}).` : `${list.length} elemente aveau alarme în Calendar.`;
+  openActions(`${what} Aplicația nu are voie să o șteargă de acolo: deschide Calendarul, apasă pe eveniment → „Șterge evenimentul”.`, [
+    { label: '📅 Deschide Calendarul la ' + fmtDay(d).toLowerCase(), run: () => {
+      // calshow:<seconds since 1 Jan 2001> opens the iOS Calendar on that day
+      window.location.href = 'calshow:' + Math.round((d.getTime() - Date.UTC(2001, 0, 1)) / 1000);
+    } },
+  ]);
+}
 function cleanup() {
   const now = Date.now();
   let changed = false;
@@ -730,14 +755,18 @@ function screenToday() {
     else if ((d && d < tomorrow) || (r && sameDay(r, new Date()))) td.push(e);
     else if (d && d < weekEnd) wk.push(e);
   }
+  // medicine doses count too: past their hour today (or forgotten on earlier days) = late; still to come today = today
+  const nowD = new Date(), dToday = dosesOn(nowD);
+  const nLate = ov.length + dToday.filter(x => doseLate(x, nowD)).length + missedDoses().length;
+  const dosesAhead = dToday.filter(x => !x.taken && !doseLate(x, nowD)).length;
   const install = !isStandalone() ? `<div class="banner"><b>📲 Pune MindMe pe ecranul telefonului</b>În Safari apasă <b style="display:inline">Partajează</b> (pătratul cu săgeată) → <b style="display:inline">Adaugă pe ecranul principal</b>.</div>` : '';
   const sec = (title, items, cls) => items.length ? `<div class="sec-title ${cls}">${title}</div><div class="group">${items.map(e => rowHtml(e, { showCat: true })).join('')}</div>` : '';
   return `
     ${mainHead(cap(fLong.format(new Date())), `<button class="iconbtn fill" data-act="new-pick">${ICON.plus}</button>`)}
     ${install}
     <div class="tiles three">
-      ${tile('Întârziate', ov.length, ov.length ? 'var(--red)' : 'var(--muted)')}
-      ${tile('Azi', td.length, 'var(--orange)')}
+      ${tile('Întârziate', nLate, nLate ? 'var(--red)' : 'var(--muted)')}
+      ${tile('Azi', td.length + dosesAhead, 'var(--orange)')}
       ${tile('7 zile', wk.length, 'var(--blue)')}
     </div>
     ${!ov.length && !td.length && !wk.length && !dosesOn(new Date()).length ? `<div class="empty"><div class="big">☀️</div><b>Ziua e liberă</b>Nimic întârziat sau programat în zilele următoare.</div>` : ''}
@@ -864,7 +893,7 @@ function screenCategory(c) {
   const showTiles = c.summary && all.length;
   return `
     <div class="topbar"><div class="left"><button class="back" data-act="back">${ICON.back}Liste</button></div>
-      <div class="right">${c.usesAmount ? `<button class="iconbtn" data-act="stats" data-id="${c.id}" aria-label="Statistici">${ICON.chart}</button>` : ''}
+      <div class="right">
       <button class="iconbtn" data-act="cat-menu" data-id="${c.id}">${ICON.more}</button>
       <button class="iconbtn fill" style="background:${col}" data-act="new" data-id="${c.id}">${ICON.plus}</button></div></div>
     <h1><span class="emo">${c.icon}</span>${esc(c.name)}</h1>
@@ -1059,7 +1088,7 @@ document.addEventListener('focusout', () => {
 });
 // Bottom bar like WhatsApp: a "bubble" sits behind the selected tab and slides;
 // drag your finger along the bar and the bubble follows, let go to open that tab.
-const TABS = [['today', 'Azi', 'sun'], ['lists', 'Liste', 'grid'], ['reminders', 'Remindere', 'bell'], ['stats', 'Statistici', 'chart']];
+const TABS = [['today', 'Azi', 'sun'], ['lists', 'Liste', 'grid'], ['reminders', 'Remindere', 'bell']];   // no Statistici: the user doesn't want statistics
 function renderTabbar() {
   const bar = document.getElementById('tabbar');
   const badge = db.entries.filter(e => !e.done && !e.med && catById(e.cat) && (isOverdue(e) || isDueToday(e) || reminderMissed(e))).length
@@ -3282,6 +3311,8 @@ function confirmSwipeDelete(kind, id) {
     const n = db.entries.filter(e => e.cat === id).length;
     openActions(`Ștergi lista „${c.name}”${n ? ` și cele ${n} elemente din ea` : ''}? Nu se poate anula.`, [
       { label: '🗑 Șterge lista', danger: true, run: () => {
+        const withAlarm = db.entries.filter(e => e.cat === id && alarmUpcoming(e));
+        if (withAlarm.length) setTimeout(() => calendarLeftover(withAlarm), 350);
         db.entries = db.entries.filter(e => e.cat !== id);
         db.categories = db.categories.filter(x => x.id !== id);
         save(); render(); toast('Lista a fost ștearsă');

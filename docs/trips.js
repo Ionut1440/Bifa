@@ -17,6 +17,7 @@ const TRIP_TYPES = [
   ['sight', '🗺️', 'Obiectiv / atracție', 'visit'],
   ['event', '🎫', 'Spectacol / eveniment', 'visit'],
   ['activity', '🥾', 'Activitate', 'visit'],
+  ['tour', '🧭', 'Tur ghidat', 'visit'],
   ['beach', '🏖️', 'Plajă', 'visit'],
   ['restaurant', '🍽️', 'Restaurant', 'food'],
   ['cafe', '☕', 'Cafenea', 'food'],
@@ -554,7 +555,6 @@ function tripSheetHtml(type) {
   if (type === 'tripitem') {
     const d = s.d, e = entryById(s.tripId), t = e.trip;
     const tt = TT[d.type] || TT.note;
-    const dayOpts = [['', 'Neprogramat (idee)'], ...tripDays(t).map((x, i) => [dkey(x), `Ziua ${i + 1} · ${cap(fLong.format(x))}`])];
     const tr = isTransport(d.type);
     const hint = TRIP_HINTS[d.type];
     return `<div class="overlay"></div><div class="panel">
@@ -567,10 +567,15 @@ function tripSheetHtml(type) {
           <div class="field"><input type="text" data-tb="notes" placeholder="Detalii (opțional)" value="${esc(d.notes || '')}"></div>
         </div>
         <div class="fhead">Când</div>
-        <div class="form">
-          <div class="field"><span class="lbl">Ziua</span><select data-tb="day" style="max-width:66%">${dayOpts.map(([k, l]) => `<option value="${k}" ${d.day === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
-          <div class="field"><span class="lbl">${tr ? 'Plecare' : d.type === 'hotel' ? 'Check-in' : 'Ora'}</span><input type="time" data-tb="time" value="${esc(d.time || '')}"></div>
-          <div class="field"><span class="lbl">${tr ? 'Sosire' : d.type === 'hotel' ? 'Check-out' : 'Până la'}</span><input type="time" data-tb="endTime" value="${esc(d.endTime || '')}"></div>
+        <div class="tr-days">
+          <button class="${!d.day ? 'on' : ''}" data-act="tr-day" data-v=""><b>Idee</b><span>neprogramat</span></button>
+          ${tripDays(t).map((x, i) => { const k = dkey(x), p = fLong.format(x).split(', ');
+            return `<button class="${d.day === k ? 'on' : ''}" data-act="tr-day" data-v="${k}"><b>Ziua ${i + 1}</b><span>${esc(p[0])}<br>${esc(p[1] || '')}</span></button>`; }).join('')}
+        </div>
+        <div class="tr-times">
+          <label class="tbox"><span>${tr ? 'Plecare' : d.type === 'hotel' ? 'Check-in' : 'Ora'}</span><input type="time" data-tb="time" value="${esc(d.time || '')}"></label>
+          <div class="tarrow">→</div>
+          <label class="tbox"><span>${tr ? 'Sosire' : d.type === 'hotel' ? 'Check-out' : 'Până la'}</span><input type="time" data-tb="endTime" value="${esc(d.endTime || '')}"></label>
         </div>
         ${tr ? `<div class="fhead">Traseu</div><div class="form">
           <div class="field"><input type="text" data-tb="from" placeholder="De la${hint ? ' (ex: ' + hint[1] + ')' : ''}" value="${esc(d.from || '')}"></div>
@@ -673,7 +678,7 @@ async function storeFile(f) {
 // what kind of file makes sense for each type (none for a café, beach, shop or note)
 function fileKind(type) {
   const g = TT[type]?.group;
-  if (g === 'transport' || ['museum', 'sight', 'event', 'activity'].includes(type))
+  if (g === 'transport' || ['museum', 'sight', 'event', 'activity', 'tour'].includes(type))
     return { head: 'Bilet', add: 'Adaugă bilet (poză sau PDF)', read: true,
       foot: 'Pune PDF-ul sau poza biletului (poți alege mai multe): citesc din el cursa, traseul, orele, data și codul și completez câmpurile goale.' };
   if (type === 'hotel') return { head: 'Rezervare', add: 'Adaugă rezervarea (poză sau PDF)', read: true,
@@ -775,6 +780,7 @@ function tripClick(act, el) {
     case 'tr-item': openTripItem(cur.id, el.dataset.iid); break;
     case 'tr-done': { const it = tripItems(cur.trip).find(x => x.id === el.dataset.iid); if (it) { it.done = !it.done; save(); render(); } break; }
     case 'tr-type': s.d.type = el.dataset.v; renderSheet(); break;
+    case 'tr-day': s.d.day = el.dataset.v; renderSheet(); break;
     case 'tr-save-item': saveTripItem(); break;
     case 'tr-del-item': openActions(`Ștergi „${s.d.title || 'elementul'}”?`, [{ label: '🗑 Șterge', danger: true, run: () => {
       const e = entryById(s.tripId); e.trip.items = tripItems(e.trip).filter(x => x.id !== s.d.id); (s.d.files || []).forEach(f => fileDel(f.id).catch(() => {})); save(); render(); toast('Șters'); } }]); break;

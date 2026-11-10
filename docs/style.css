@@ -460,6 +460,19 @@ body.inapp #app { padding-bottom: 0; }
 .tr-types button span { font-size: 22px; }
 .tr-types button.on { background: var(--accent); color: #fff; }
 .tr-types button:active { transform: scale(.94); }
+/* trip item: days as big buttons (full text, never cut) + two big time boxes */
+.tr-days { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tr-days button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 4px; border-radius: 12px; background: var(--card); font-size: 12px; color: var(--muted); line-height: 1.25; text-align: center; transition: transform .12s; }
+.tr-days button b { font-size: 15px; color: var(--text); }
+.tr-days button.on { background: var(--accent); color: rgba(255,255,255,.88); }
+.tr-days button.on b { color: #fff; }
+.tr-days button:active { transform: scale(.95); }
+.tr-times { display: flex; align-items: stretch; gap: 8px; margin-top: 10px; }
+.tbox { flex: 1; min-width: 0; background: var(--card); border-radius: 12px; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; }
+.tbox span { font-size: 13px; font-weight: 600; color: var(--muted); }
+.tbox input { font-size: 26px; font-weight: 700; color: var(--text); background: transparent; border: 0; padding: 0; margin: 0; width: 100%; min-height: 36px; text-align: left; -webkit-appearance: none; appearance: none; font-variant-numeric: tabular-nums; }
+.tbox input::-webkit-date-and-time-value { text-align: left; }
+.tarrow { align-self: center; color: var(--muted); font-size: 20px; font-weight: 700; }
 .tr-emojis { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .tr-emojis button { width: 44px; height: 44px; border-radius: 12px; font-size: 24px; background: var(--card); }
 .tr-emojis button.on { background: color-mix(in srgb, var(--accent) 22%, var(--card)); box-shadow: 0 0 0 2px var(--accent); }
@@ -605,3 +618,10 @@ button.tile { text-align: left; width: 100%; transition: transform .15s; }
 button.tile:active { transform: scale(.97); }
 button.tile .tl::after { content: " ›"; opacity: .6; }
 .bars { touch-action: pan-y; }
+/* ---------- never cut text with "…": everything wraps onto the next line (professional, nothing incomplete) ---------- */
+.chip, .panel-head .t, .hrow h1, .sl-txt, .qs-name, .mrow-t b, .hbar-top span, #undo span {
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+}
+.rdetails { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.chip { line-height: 1.3; }
+.panel-head .t { line-height: 1.2; }
