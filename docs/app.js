@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-234655';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-235930';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -3219,14 +3219,9 @@ document.addEventListener('click', ev => {
       ]);
       break;
     case 'hl-noalarm': {
-      // a filter: only the reminders without an alarm (all of them, however many), lit up briefly; tap again → everything
+      // a filter: only the reminders without an alarm (all of them, however many); tap again → everything
       ui.remNoAlarm = !ui.remNoAlarm;
       render();
-      if (ui.remNoAlarm) {
-        const rows = [...document.querySelectorAll('#app .swipe[data-swipe="entry"]')];
-        rows.forEach(r => r.classList.add('flash'));
-        setTimeout(() => rows.forEach(r => r.classList.remove('flash')), 4200);
-      }
       break;
     }
     case 'list-wipe': {
