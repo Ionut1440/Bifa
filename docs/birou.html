@@ -117,7 +117,7 @@
   .seg.dragging .segpill { transition: width .2s ease, height .2s ease; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
   .chipuri { display: flex; }
   .chip { position: relative; z-index: 1; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 5px; padding: 8px 3px 7px; border-radius: 10px;
+    align-items: center; justify-content: flex-start; gap: 5px; padding: 9px 3px 7px; border-radius: 10px;   /* top-aligned: every dot on the same line, even when a label takes two lines */
     font-size: 12px; font-weight: 600; line-height: 1.15; text-align: center; color: var(--text);
     transition: transform .2s cubic-bezier(.3,1.4,.5,1), color .2s; transform-origin: 50% 70%; }
   .chip i { width: 14px; height: 14px; border-radius: 50%; display: block; flex: 0 0 auto;
