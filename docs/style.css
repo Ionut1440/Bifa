@@ -312,6 +312,9 @@ button.chip { cursor: pointer; }
 
 #toast { position: fixed; left: 50%; top: calc(var(--safe-t) + 12px); transform: translate(-50%, -150%); background: var(--text); color: var(--bg); padding: 11px 18px; border-radius: 22px; font-weight: 600; font-size: 14px; z-index: 40; transition: transform .3s cubic-bezier(.2,.9,.3,1); max-width: 90vw; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
 #toast.show { transform: translate(-50%, 0); }
+/* hidden toast: fully invisible (its shadow used to peek out under the Dynamic Island) */
+#toast:not(.show) { opacity: 0; visibility: hidden; box-shadow: none; transition: transform .3s cubic-bezier(.2,.9,.3,1), opacity .2s, visibility 0s .3s; }
+#toast.show { opacity: 1; visibility: visible; }
 .hidden { display: none !important; }
 
 .brand { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; color: var(--muted); letter-spacing: .2px; }

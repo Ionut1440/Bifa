@@ -3028,7 +3028,10 @@ document.addEventListener('click', ev => {
       if (s?.type === 'tripfile' && s.back) { ui.sheet = s.back; renderSheet(); break; }   // ticket viewer → back to the item
       closeSheet(); break;
     case 'export': exportData(); break;
-    case 'theme': applyTheme(el.dataset.v); render(); break;
+    case 'theme': applyTheme(el.dataset.v); render();
+      // on the iPhone home-screen app, reload so the status bar (clock area) takes the new colour too
+      if (isStandalone()) setTimeout(() => location.reload(), 250);
+      break;
     case 'set-pack': ui.sheet = { type: 'trippack' }; renderSheet(); break;
     case 'set-lists': switchTab('lists'); break;
     case 'wipe-all':
