@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261110-230930';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261110-231831';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -1345,6 +1345,7 @@ document.addEventListener('pointerdown', ev => {
   bar.classList.remove('compact');
   placePill(tabDrag.over, ev.clientX);
   markOver(tabDrag.over);
+  tintTabs(ev.clientX);
   lensMove(ev.clientX, true);
 });
 // ---------- liquid-glass lens (like iOS 26 / WhatsApp): while you drag along the bottom bar, a clear lens
@@ -1412,8 +1413,19 @@ document.addEventListener('pointermove', ev => {
   if (over !== tabDrag.over) { tabDrag.over = over; try { navigator.vibrate?.(6); } catch (e) { /* ignore */ } }
   markOver(over);
   placePill(over, ev.clientX);
+  tintTabs(ev.clientX);
   lensMove(ev.clientX);
 });
+// while dragging: each tab's text and icon turn turquoise gradually as the finger (and the lens) gets closer,
+// and fade back as it moves away, in step with the magnifier
+function tintTabs(x) {
+  document.querySelectorAll('#tabbar button[data-tab]').forEach(b => {
+    const r = b.getBoundingClientRect();
+    const k = Math.max(0, 1 - Math.abs(x - (r.left + r.width / 2)) / (r.width * .95));
+    const e = k * k * (3 - 2 * k);   // smooth curve
+    b.style.color = `color-mix(in srgb, var(--accent) ${Math.round(e * 100)}%, color-mix(in srgb, var(--text) 58%, transparent))`;
+  });
+}
 function endTabDrag(ev) {
   if (!tabDrag || (ev && ev.pointerId !== tabDrag.id)) return;
   const target = tabDrag.over;
@@ -1423,6 +1435,7 @@ function endTabDrag(ev) {
   markOver(null);
   lensHide();
   unmagnify([...bar.querySelectorAll('button[data-tab]')]);
+  bar.querySelectorAll('button[data-tab]').forEach(b => { b.style.color = ''; });
   if (ev && ev.type === 'pointercancel') { renderTabbar(); return; }
   if (target) { placePill(target); switchTab(target.dataset.tab); }
 }

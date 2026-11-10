@@ -781,3 +781,7 @@ h1 .emo.glt .glyph { width: 23px; height: 23px; }
 .tr-types button span .ig { width: 24px; height: 24px; }
 .tr-emojis { display: grid; grid-template-columns: repeat(6, 1fr); }
 .tr-emojis button { width: auto; }
+
+/* while dragging, colour comes from the finger's distance (tintTabs), not from a sudden .over switch */
+#tabbar.dragging button, #tabbar.dragging button.over, #tabbar.dragging button.on { transition: transform .09s linear; }
+#lens .lensrow button.over, #lens .lensrow button.on { color: inherit; }
