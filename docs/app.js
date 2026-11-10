@@ -836,7 +836,6 @@ function applyTheme(t) {
   const dark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.querySelectorAll('meta[name="apple-mobile-web-app-status-bar-style"]').forEach(m => { m.content = dark ? 'black-translucent' : 'default'; });
   document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.content = dark ? '#000000' : '#F2F2F7'; });
-  if (isStandalone()) toast('Bara de sus (ceasul) ia noua culoare după ce închizi și redeschizi aplicația');
   document.querySelectorAll('iframe').forEach(f => { try { set(f.contentDocument); } catch (e) { /* ignore */ } });
 }
 function storageUsed() {
