@@ -647,7 +647,7 @@ button.tile .tl::after { content: " ›"; opacity: .6; }
 .bars { touch-action: pan-y; }
 /* ---------- never cut text with "…": everything wraps onto the next line (professional, nothing incomplete) ---------- */
 .chip, .panel-head .t, .hrow h1, .sl-txt, .qs-name, .mrow-t b, .hbar-top span, #undo span {
-  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word;
 }
 .rdetails { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .chip { line-height: 1.3; }
@@ -676,7 +676,7 @@ button.tile .tl::after { content: " ›"; opacity: .6; }
 .about-copy { margin-top: 4px; color: var(--muted); font-size: 12px; }
 
 /* ---------- wrapped text looks tidy: paragraphs justified, wrapped titles balanced ---------- */
-.footnote, .ffoot, .banner, .rdetails, .asheet .atitle, .empty { hyphens: auto; -webkit-hyphens: auto; text-wrap: pretty; }
+.footnote, .ffoot, .banner, .rdetails, .asheet .atitle, .empty { hyphens: manual; -webkit-hyphens: manual; text-wrap: pretty; }
 .footnote, .ffoot, .banner, .rdetails { text-align: justify; }
 .hrow h1, .panel-head .t, .rtitle, .catname, .chip { text-wrap: balance; }
 .asheet .atitle { text-align: justify; text-align-last: center; }
@@ -690,3 +690,6 @@ button.tile .tl::after { content: " ›"; opacity: .6; }
 /* fixed title row is solid (same colour as the page): nothing shows through it while scrolling */
 #fixhead { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
 #fixhead::after { bottom: -10px; height: 10px; background: linear-gradient(to bottom, var(--bg), color-mix(in srgb, var(--bg) 0%, transparent)); }
+
+/* words are never split: no automatic hyphenation anywhere */
+html { hyphens: manual; -webkit-hyphens: manual; }

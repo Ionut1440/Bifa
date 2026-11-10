@@ -468,7 +468,7 @@ function tripTicketsHtml(e) {
     ${tickets.length ? `<div class="tk-list">${tickets.map(card).join('')}</div>` : `<div class="empty"><div class="big">🎫</div><b>Niciun bilet încă</b>Adaugă zboruri, trenuri, cazări sau muzee: pune PDF-ul sau o poză cu biletul și completez singur datele din el.</div>`}
     <div class="sec-title" style="margin-top:24px">📄 Documente</div>
     ${docs.length ? `<div class="tk-list">${docs.map(card).join('')}</div>` : '<div class="footnote" style="margin-top:0">Pașaport, buletin, asigurare, permis — pune o poză, ca să le ai la îndemână.</div>'}
-    ${tickets.length + docs.length ? '<div class="footnote">Glisează spre dreapta ca să ștergi un bilet; ține apăsat și trage ca să-l muți.</div>' : ''}
+
     <button class="btn light block mt" data-act="tr-add-doc">＋ Adaugă document</button>`;
 }
 

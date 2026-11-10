@@ -822,7 +822,6 @@ function screenLists() {
   return `
     ${mainHead('Liste', `<button class="iconbtn fill" data-act="cat-new">${ICON.plus}</button>`)}
     <div class="group">${rows || '<div class="empty">Nicio listă.</div>'}</div>
-    <div class="footnote">Listele se ordonează singure: sus cele cu cele mai multe lucruri active, apoi alfabetic. Glisează spre stânga pentru setări, spre dreapta pentru ștergere.</div>
 `;
 }
 
@@ -1002,6 +1001,7 @@ function render() {
   app.classList.toggle('searching', !!(isMain && ui.searching));
   document.body.classList.toggle('searching', !!(isMain && ui.searching));
   pinHeader(app);
+  glueHyphens(app); glueHyphens(document.getElementById('fixhead'));
   openSwipeEl = null;
   scroller().scrollTo(0, ui.searching ? 0 : y);
   renderTabbar();
@@ -1012,6 +1012,19 @@ function render() {
 // ---------- the top of every screen stays put (title, date, + / ‹ back, title, buttons) ----------
 // The header is moved into #fixhead (fixed, frosted glass); the page scrolls (and bounces) underneath it.
 let fixObs = null;
+// Romanian short forms joined by a hyphen ("salvează-l", "într-o", "dintr-un") must never break at the hyphen:
+// swap the hyphen for a non-breaking one (looks identical) in everything on screen
+const GLUE_RE = /(\p{L})-(?=(?:l|o|i|le|li|lor|mi|ți|ti|și|si|ne|vă|va|un|al|ai|am|ați|au|a|s|n|lea|nd)(?!\p{L}))/gu;
+function glueHyphens(root) {
+  if (!root) return;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    if (n.nodeValue.includes('-') && !n.parentElement?.closest('input,textarea,script,style')) {
+      const v = n.nodeValue.replace(GLUE_RE, '$1‑');
+      if (v !== n.nodeValue) n.nodeValue = v;
+    }
+  }
+}
 function pinHeader(app) {
   const fh = document.getElementById('fixhead');
   fh.innerHTML = '';
@@ -2010,7 +2023,7 @@ function screenShopping(c) {
       <div class="group">${sortManual(by[g]).map(e => rowHtml(e, { showGroup: false, reorder: 'shop' })).join('')}</div>`).join('')}
     ${cart.length ? `<div class="sl-head" style="margin-top:26px"><span>🛒 În coș · ${cart.length}</span><button data-act="cart-clear" data-id="${c.id}">Golește coșul</button></div>
       <div class="group">${cart.map(e => rowHtml(e, { showGroup: false })).join('')}</div>` : ''}
-    ${total ? `<div class="footnote">Bifează ce pui în coș. Ține apăsat pe un produs și trage-l ca să-l muți. Glisează spre dreapta ca să-l ștergi; apasă pe el ca să schimbi raionul.</div>` : ''}`;
+    `;
 }
 
 // ---------- month calendar to pick several days (reminder "Zile alese din calendar") ----------
@@ -2285,7 +2298,7 @@ function screenMeds(c) {
     ${sec('Urmează', groups.future)}
     ${sec('Terminate', groups.finished)}
     ${sec('Oprite', groups.stopped)}
-    ${meds.length ? `<div class="footnote">Bifează fiecare doză când o iei. Tratamentele cu număr de zile se termină singure.</div>` : ''}`;
+    `;
 }
 
 // medicine editor
@@ -2783,6 +2796,7 @@ function renderSheet() {
   if (body) el.querySelectorAll('.panel, .overlay').forEach(x => (x.style.animation = 'none'));
   document.body.style.overflow = 'hidden';
   initSegs(el);
+  glueHyphens(el);
   if (typeof tripAfterRender === 'function') tripAfterRender();
 }
 function closeSheet() { ui.sheet = null; ui.pendingRerender = false; renderSheet(); render(); }
@@ -2791,7 +2805,7 @@ function closeSheet() { ui.sheet = null; ui.pendingRerender = false; renderSheet
 let toastTimer;
 function toast(msg) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
+  t.textContent = String(msg).replace(GLUE_RE, '$1‑');
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
