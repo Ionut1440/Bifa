@@ -1002,6 +1002,7 @@ function render() {
   document.body.classList.toggle('searching', !!(isMain && ui.searching));
   pinHeader(app);
   glueHyphens(app); glueHyphens(document.getElementById('fixhead'));
+  requestAnimationFrame(markScrolled);
   openSwipeEl = null;
   scroller().scrollTo(0, ui.searching ? 0 : y);
   renderTabbar();
@@ -1012,6 +1013,9 @@ function render() {
 // ---------- the top of every screen stays put (title, date, + / ‹ back, title, buttons) ----------
 // The header is moved into #fixhead (fixed, frosted glass); the page scrolls (and bounces) underneath it.
 let fixObs = null;
+// hairline under the fixed header only when something is scrolled underneath it
+function markScrolled() { document.body.classList.toggle('scrolled', (scroller().scrollTop || 0) > 4); }
+window.addEventListener('scroll', markScrolled, { passive: true });
 // Romanian short forms joined by a hyphen ("salvează-l", "într-o", "dintr-un") must never break at the hyphen:
 // swap the hyphen for a non-breaking one (looks identical) in everything on screen
 const GLUE_RE = /(\p{L})-(?=(?:l|o|i|le|li|lor|mi|ți|ti|și|si|ne|vă|va|un|al|ai|am|ați|au|a|s|n|lea|nd)(?!\p{L}))/gu;

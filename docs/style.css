@@ -693,3 +693,8 @@ button.tile .tl::after { content: " ›"; opacity: .6; }
 
 /* words are never split: no automatic hyphenation anywhere */
 html { hyphens: manual; -webkit-hyphens: manual; }
+
+/* under the fixed header: nothing while the page is at the top (the search bar stays crisp);
+   once you scroll, a thin hairline like iOS navigation bars — no blurred fade */
+#fixhead::after { bottom: 0; height: 0; background: none; border-bottom: .5px solid transparent; transition: border-color .2s; }
+body.scrolled #fixhead::after { border-bottom-color: var(--line); }
