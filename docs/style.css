@@ -819,3 +819,24 @@ body.searching #fixhead { padding-bottom: 8px; }
 #app > .sec-title:first-child, #app > .mainhead + .screen-body > .sec-title:first-child { margin-top: 10px !important; }
 .seg + .search, .seg + .sl-in > :first-child, .seg + #catlist > :first-child { margin-top: 12px !important; }
 .seg + .sl-in > .sec-title:first-child { margin-top: 22px !important; }
+
+/* same type everywhere (app + mini-apps): system font, medium weight for normal text (400 looks thin on iPhone) */
+body { font-weight: 500; }
+input, select, textarea, button { font-weight: inherit; }
+
+#tabbar .tbadge, #lens .lensrow .tbadge { top: 0; left: calc(50% + 8px); min-width: 17px; height: 17px; border-radius: 9px; font-size: 10.5px; padding: 0 4px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--card) 92%, transparent); }
+/* the lens while sliding: an iridescent rim in several colours, clearly visible */
+#lens .lensrim { padding: 2.5px; opacity: .95; filter: none;
+  background: conic-gradient(from 210deg, #0E9AA7, #3FC8FF, #7BE495, #FFE066, #FF9F6B, #FF6BA8, #6BD5FF, #0E9AA7); }
+:root:not([data-theme="light"]) #lens .lensrim, :root[data-theme="dark"] #lens .lensrim { opacity: .85; }
+/* phones held sideways: MindMe is made for portrait; tablets may rotate freely */
+#rotate { display: none; }
+@media (orientation: landscape) and (max-height: 500px) {
+  #rotate { display: grid; place-items: center; align-content: center; gap: 14px; position: fixed; inset: 0; z-index: 100; background: var(--bg); color: var(--text);
+    font-size: 17px; font-weight: 600; text-align: center; padding: 20px; }
+  #rotate svg { width: 56px; height: 56px; color: var(--accent); }
+}
+/* Despre: icon, name, version and author only */
+.about { padding: 24px 18px 20px; }
+.about-dev { margin-top: 12px; }

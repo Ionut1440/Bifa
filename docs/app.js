@@ -4,7 +4,7 @@
 const KEY = 'bifa.data.v1';
 const VERSION = '1.5';
 const BUILD_DATE = '10 noiembrie 2026';
-const BUILD_ID = '20261111-000043';   // set automatically by tools/publish.ps1 on every publish
+const BUILD_ID = '20261111-202726';   // set automatically by tools/publish.ps1 on every publish
 
 // ---------- helpers ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -938,7 +938,7 @@ function fitAbout() {
   p.textContent = best.v.replace(GLUE_RE, '$1‑');
   p.classList.add('fitted');
 }
-window.addEventListener('resize', () => { if (ui.tab === 'settings') fitAbout(); });
+
 function themePref() { try { return localStorage.getItem('mindme.theme') || 'auto'; } catch (e) { return 'auto'; } }
 function applyTheme(t) {
   try { if (t === 'auto') localStorage.removeItem('mindme.theme'); else localStorage.setItem('mindme.theme', t); } catch (e) { /* ignore */ }
@@ -1000,7 +1000,6 @@ function screenSettings() {
       <img src="icons/icon-192.png" alt="" class="about-ico">
       <div class="about-name">MindMe</div>
       <div class="about-ver">Versiunea ${VERSION} · ${BUILD_DATE}</div>
-      <p class="about-txt" id="abouttxt">${esc(ABOUT_VARIANTS[0])}</p>
       <div class="about-dev">Dezvoltată de <b>Ionuț Mătanie</b></div>
       <div class="about-copy">© 2026 Ionuț Mătanie. Toate drepturile rezervate.</div>
     </div>`;
@@ -1127,7 +1126,6 @@ function render() {
   glueHyphens(app); glueHyphens(document.getElementById('fixhead'));
   if (typeof emojiToGlyphs === 'function') { emojiToGlyphs(app); emojiToGlyphs(document.getElementById('fixhead')); }
   requestAnimationFrame(markScrolled);
-  if (ui.tab === 'settings') requestAnimationFrame(fitAbout);
   openSwipeEl = null;
   scroller().scrollTo(0, ui.searching ? 0 : y);
   renderTabbar();

@@ -195,7 +195,7 @@
   .setari label, .setari .rd { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; min-height: 52px; position: relative; font-size: 16px; }
   .setari > * + *::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; border-top: .5px solid var(--line); }
   .setari label span, .setari .rd span { flex: 1; min-width: 0; }
-  .setari .rd small { display: block; font-size: 13px; color: var(--muted); margin-top: 1px; }
+  .setari label small, .setari .rd small { display: block; font-size: 13px; color: var(--muted); margin-top: 1px; }
   .setari .rd b { font-size: 15px; font-weight: 600; color: var(--muted); text-align: right; white-space: nowrap; }
   .pas { display: flex; align-items: center; background: var(--field); border-radius: 10px; flex: 0 0 auto; }
   .pas button { width: 36px; height: 34px; display: grid; place-items: center; color: var(--accent); font-size: 21px; font-weight: 600;
@@ -224,6 +224,8 @@
   /* no emoji: drawings in their place (icons.js) */
   .ig { display: inline-flex; width: 1.15em; height: 1.15em; vertical-align: -.2em; flex: 0 0 auto; }
   .ig svg { width: 100%; height: 100%; }
+  body { font-weight: 500; }
+  input, select, textarea, button { font-weight: inherit; }
 </style>
 </head>
 <body>
@@ -280,7 +282,7 @@
     <div class="setari">
       <label><span>Zile acasă / lună</span>
         <span class="pas" style="flex:0 0 auto"><button type="button" data-pas="-1" aria-label="Mai puțin">−</button><input type="number" id="setAcasa" min="0" max="23" inputmode="numeric"><button type="button" data-pas="1" aria-label="Mai mult">+</button></span></label>
-      <label><span>Zile de concediu care scad o zi de birou</span>
+      <label><span>Reducere pentru concediu<small id="coText"></small></span>
         <span class="pas" style="flex:0 0 auto"><button type="button" data-pas="-1" aria-label="Mai puțin">−</button><input type="number" id="setCo" min="1" max="10" inputmode="numeric"><button type="button" data-pas="1" aria-label="Mai mult">+</button></span></label>
       <label><span>Începe programul</span><input type="time" class="ora" id="setStart"></label>
       <label><span>Se termină programul</span><input type="time" class="ora" id="setEnd"></label>
@@ -481,6 +483,8 @@ $("grila").addEventListener("touchend", e => {
   if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) mutaLuna(dx < 0 ? 1 : -1);
 });
 
+const arataCo = () => { const n = date.setari.co_per_zi; $("coText").textContent = `o zi mai puțin la birou la fiecare ${n === 1 ? 'zi' : n + ' zile'} de concediu`; };
+arataCo();
 const arataOre = () => { const h = orePeZi(); $("oreZi").textContent = `${String(h).replace('.', ',')} ${h === 1 ? 'oră' : 'ore'}`; };
 for (const [id, cheie] of [["setStart", "ora_start"], ["setEnd", "ora_end"]]) {
   const el = $(id); el.value = date.setari[cheie];
@@ -491,7 +495,7 @@ for (const [id, cheie, min] of [["setAcasa", "zile_acasa", 0], ["setCo", "co_per
   const el = $(id); el.value = date.setari[cheie];
   el.addEventListener("input", () => {
     const v = parseInt(el.value, 10);
-    if (!isNaN(v) && v >= min) { date.setari[cheie] = v; salveaza(); arataOre(); deseneaza(); }
+    if (!isNaN(v) && v >= min) { date.setari[cheie] = v; salveaza(); arataOre(); arataCo(); deseneaza(); }
   });
 }
 // salvare și la închidere / trecere în fundal
